@@ -1,0 +1,144 @@
+---
+# Supported options: 
+#   sn-nature:       Style for submissions to Nature Portfolio journals
+#   sn-basic:        Basic Springer Nature Reference Style/Chemistry Reference Style
+#   sn-mathphys:     Math and Physical Sciences Reference Style
+#   sn-aps:          American Physical Society (APS) Reference Style
+#   sn-vancouver:    Vancouver Reference Style
+#   sn-apa:          APA Reference Style 
+#   sn-chicago:      Chicago-based Humanities Reference Style
+#   default:         Default
+
+classoptions: 
+  - sn-basic      
+  # - Numbered      # Optional: Use numbered references instead of namedate references (only for sn-nature, sn-basic, sn-vancouver, sn-chicago, sn-mathphys or sn-nature)
+  # - referee       # Optional: Use double line spacing 
+  # - lineno        # Optional: Add line numbers
+  # - iicol         # Optional: Double column layour
+
+title: Article Title
+titlerunning: Article Title runing
+
+
+authors: 
+  - firstname: Elio
+    lastname: Campitelli
+    email: elio.campitelli@cima.fcen.uba.ar
+    affiliation: [1,2,3]
+    corresponding: TRUE
+  - firstname: Leandro B.
+    lastname: Díaz
+    affiliation: [1,2,3]
+  - firstname: Carolina
+    lastname: Vera
+    affiliation: [1,2,3]
+
+affiliations:
+  - number: 1
+    corresponding: TRUE
+    info:
+      orgname: Universidad de Buenos Aires, Facultad de Ciencias Exactas y Naturales, Departamento de Ciencias de la Atmósfera y los Océanos.
+    address:
+        city: Buenos Aires
+        country: Argentina
+  - number: 2
+    corresponding: TRUE
+    info:
+      orgname: CONICET – Universidad de Buenos Aires. Centro de Investigaciones del Mar y la Atmósfera (CIMA)
+    address:
+        city: Buenos Aires
+        country: Argentina  
+  - number: 3
+    corresponding: TRUE
+    info:
+      orgname: CNRS – IRD – CONICET – UBA. Instituto Franco-Argentino para el Estudio del Clima y sus Impactos (IRL 3351 IFAECI)
+    address:
+        city: Buenos Aires
+        country: Argentina
+
+                  
+keywords:
+  - key
+  - dictionary
+  - word
+  
+
+bibliography: bibliography.bib
+
+header-includes: |
+  %% Per the spinger doc, new theorem styles can be included using built in style, 
+  %% but it seems the don't work so commented below
+  %\theoremstyle{thmstyleone}%
+  \newtheorem{theorem}{Theorem}%  meant for continuous numbers
+  %%\newtheorem{theorem}{Theorem}[section]% meant for sectionwise numbers
+  %% optional argument [theorem] produces theorem numbering sequence instead of independent numbers for Proposition
+  \newtheorem{proposition}[theorem]{Proposition}%
+  %%\newtheorem{proposition}{Proposition}% to get separate numbers for theorem and proposition etc.
+
+  %% \theoremstyle{thmstyletwo}%
+  \theoremstyle{remark}
+  \newtheorem{example}{Example}%
+  \newtheorem{remark}{Remark}%
+
+  %% \theoremstyle{thmstylethree}%
+  \theoremstyle{definition}
+  \newtheorem{definition}{Definition}%
+
+output: 
+  # bookdown::html_document2:
+  #     code_folding: "hide"
+      
+  bookdown::pdf_book: 
+      base_format: rticles::springer_article
+      latex_engine: "xelatex"
+      citation_package: "natbib"
+      pandoc_args:
+        - "--lua-filter=abstract-to-meta.lua"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      out.extra = "")  # This forces knitr to label all figures.
+```
+
+# Abstract
+
+blablabla
+
+# Introduction {#intro}
+
+# Data and methods {#methods}
+
+Fuentes de datos.
+
+Describir un poco CMIP6 y DAMIP.
+
+Describir los cEOF brevemente.
+
+Describir A-SAM brevemente
+
+# Results and discussion {#restuls}
+
+## Validation
+
+Validación de CMIP6 y de DAMIP.
+
+Figuras de la tesis, inluyendo acá las regresiones con la altura geopotencial.
+
+## Relationship with tropical variability
+
+De la tesis.
+
+Explorar DAMIP. Con suerte no da particularmente distinto y no se muestra.
+
+## Relationship with SAM
+
+Idem arriba
+
+## Trends
+
+Tesis.
+
+Calcular las tendencias y su incertidumbre bien, con un modelo mixto.
+
+## Conclusions

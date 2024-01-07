@@ -1,0 +1,180 @@
+%Version 2.1 April 2023
+% See section 11 of the User Manual for version history
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                                                                 %%
+%% Please do not use \input{...} to include other tex files.       %%
+%% Submit your LaTeX manuscript as one .tex document.              %%
+%%                                                                 %%
+%% All additional figures and files should be attached             %%
+%% separately and not embedded in the \TeX\ document itself.       %%
+%%                                                                 %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\documentclass[sn-basic,pdflatex]{sn-jnl}
+
+%%%% Standard Packages
+%%<additional latex packages if required can be included here>
+
+\usepackage{graphicx}%
+\usepackage{multirow}%
+\usepackage{amsmath,amssymb,amsfonts}%
+\usepackage{amsthm}%
+\usepackage{mathrsfs}%
+\usepackage[title]{appendix}%
+\usepackage{xcolor}%
+\usepackage{textcomp}%
+\usepackage{manyfoot}%
+\usepackage{booktabs}%
+\usepackage{algorithm}%
+\usepackage{algorithmicx}%
+\usepackage{algpseudocode}%
+\usepackage{listings}%
+%%%%
+
+%%%%%=============================================================================%%%%
+%%%%  Remarks: This template is provided to aid authors with the preparation
+%%%%  of original research articles intended for submission to journals published
+%%%%  by Springer Nature. The guidance has been prepared in partnership with
+%%%%  production teams to conform to Springer Nature technical requirements.
+%%%%  Editorial and presentation requirements differ among journal portfolios and
+%%%%  research disciplines. You may find sections in this template are irrelevant
+%%%%  to your work and are empowered to omit any such section if allowed by the
+%%%%  journal you intend to submit to. The submission guidelines and policies
+%%%%  of the journal take precedence. A detailed User Manual is available in the
+%%%%  template package for technical guidance.
+%%%%%=============================================================================%%%%
+
+%% Per the spinger doc, new theorem styles can be included using built in style, 
+%% but it seems the don't work so commented below
+%\theoremstyle{thmstyleone}%
+\newtheorem{theorem}{Theorem}%  meant for continuous numbers
+%%\newtheorem{theorem}{Theorem}[section]% meant for sectionwise numbers
+%% optional argument [theorem] produces theorem numbering sequence instead of independent numbers for Proposition
+\newtheorem{proposition}[theorem]{Proposition}%
+%%\newtheorem{proposition}{Proposition}% to get separate numbers for theorem and proposition etc.
+
+%% \theoremstyle{thmstyletwo}%
+\theoremstyle{remark}
+\newtheorem{example}{Example}%
+\newtheorem{remark}{Remark}%
+
+%% \theoremstyle{thmstylethree}%
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}%
+
+
+
+\raggedbottom
+
+
+
+
+% tightlist command for lists without linebreak
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+% From pandoc table feature
+\usepackage{longtable,booktabs,array}
+\usepackage{calc} % for calculating minipage widths
+% Correct order of tables after \paragraph or \subparagraph
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd\longtable{\par}{\if@noskipsec\mbox{}\fi\par}{}{}
+\makeatother
+% Allow footnotes in longtable head/foot
+\IfFileExists{footnotehyper.sty}{\usepackage{footnotehyper}}{\usepackage{footnote}}
+\makesavenoteenv{longtable}
+
+
+
+
+\begin{document}
+
+
+\title[Article Title runing]{Article Title}
+
+%%=============================================================%%
+%% Prefix	-> \pfx{Dr}
+%% GivenName	-> \fnm{Joergen W.}
+%% Particle	-> \spfx{van der} -> surname prefix
+%% FamilyName	-> \sur{Ploeg}
+%% Suffix	-> \sfx{IV}
+%% NatureName	-> \tanm{Poet Laureate} -> Title after name
+%% Degrees	-> \dgr{MSc, PhD}
+%% \author*[1,2]{\pfx{Dr} \fnm{Joergen W.} \spfx{van der} \sur{Ploeg} \sfx{IV} \tanm{Poet Laureate}
+%%                 \dgr{MSc, PhD}}\email{iauthor@gmail.com}
+%%=============================================================%%
+
+\author*[1,2,3]{\fnm{Elio} \sur{Campitelli} }\email{\href{mailto:elio.campitelli@cima.fcen.uba.ar}{\nolinkurl{elio.campitelli@cima.fcen.uba.ar}}}
+
+\author[1,2,3]{\fnm{Leandro B.} \sur{Díaz} }
+
+\author[1,2,3]{\fnm{Carolina} \sur{Vera} }
+
+
+
+  \affil*[1]{\orgname{Universidad de Buenos Aires, Facultad de Ciencias Exactas y Naturales, Departamento de Ciencias de la Atmósfera y los Océanos}, \orgaddress{\city{Buenos Aires}, \country{Argentina}}}
+  \affil*[2]{\orgname{CONICET -- Universidad de Buenos Aires. Centro de Investigaciones del Mar y la Atmósfera (CIMA)}, \orgaddress{\city{Buenos Aires}, \country{Argentina}}}
+  \affil*[3]{\orgname{CNRS -- IRD -- CONICET -- UBA. Instituto Franco-Argentino para el Estudio del Clima y sus Impactos (IRL 3351 IFAECI)}, \orgaddress{\city{Buenos Aires}, \country{Argentina}}}
+
+\abstract{blablabla}
+
+\keywords{key, dictionary, word}
+
+
+\pacs[JEL Classification]{D8, H51}
+\pacs[MSC Classification]{35A01, 65L10}
+
+\maketitle
+
+\hypertarget{intro}{%
+\section{Introduction}\label{intro}}
+
+\hypertarget{methods}{%
+\section{Data and methods}\label{methods}}
+
+Fuentes de datos.
+
+Describir un poco CMIP6 y DAMIP.
+
+Describir los cEOF brevemente.
+
+Describir A-SAM brevemente
+
+\hypertarget{restuls}{%
+\section{Results and discussion}\label{restuls}}
+
+\hypertarget{validation}{%
+\subsection{Validation}\label{validation}}
+
+Validación de CMIP6 y de DAMIP.
+
+Figuras de la tesis, inluyendo acá las regresiones con la altura geopotencial.
+
+\hypertarget{relationship-with-tropical-variability}{%
+\subsection{Relationship with tropical variability}\label{relationship-with-tropical-variability}}
+
+De la tesis.
+
+Explorar DAMIP. Con suerte no da particularmente distinto y no se muestra.
+
+\hypertarget{relationship-with-sam}{%
+\subsection{Relationship with SAM}\label{relationship-with-sam}}
+
+Idem arriba
+
+\hypertarget{trends}{%
+\subsection{Trends}\label{trends}}
+
+Tesis.
+
+Calcular las tendencias y su incertidumbre bien, con un modelo mixto.
+
+\hypertarget{conclusions}{%
+\subsection{Conclusions}\label{conclusions}}
+
+\bibliography{bibliography.bib}
+
+
+\end{document}
