@@ -2,3 +2,9 @@
 .Rhistory
 .RData
 .Ruserdata
+
+cache
+data
+
+nohup.pid
+log.log
