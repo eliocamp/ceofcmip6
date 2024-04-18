@@ -99,11 +99,62 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE,
                       out.extra = "")  # This forces knitr to label all figures.
+
+
+
+library(targets)
+library(here)
+source(here("paper/helpers.R"))
+tar_source(here("R"))
+tar_config_set(store = here(tar_config_get("store")))
+
+
+library(lme4)
+
+
+library(eliotesis)
+
+library(metR)
+library(data.table)
+library(magrittr)
+
+library(kableExtra)
+
+library(ggplot2)
+library(tagger)
+library(ggperiodic)
+library(ggnewscale)
+library(tidyfast)
+
+ggplot2::theme_set(eliotesis::theme_tesis(base_size = 10) +
+                     ggplot2::theme(legend.box.spacing = grid::unit(-.5, "lines")))
+
+
+alpha_from_n <- function(n, max_alpha = 0.99) {
+  1 - (1 - max_alpha)^(1/n)
+}
+
+sf::sf_use_s2(FALSE)
+```
+
+```{r scales}
+experiments <- c("historical", "hist-GHG", "hist-stratO3", "hist-nat", "hist-aer")
+colores <- setNames(c("black", RColorBrewer::brewer.pal(length(experiments) - 1, "Dark2")),
+                    experiments)
+scale_color_experiments <- function(...) {
+  scale_color_manual(..., name = NULL, 
+                     values =  colores)
+}
+
+
+scale_fill_experiments <- function(...) {
+  scale_fill_manual(..., name = NULL, 
+                    values = colores)
+}
+
 ```
 
 # Abstract
-
-blablabla
 
 # Introduction {#intro}
 
@@ -113,6 +164,61 @@ Fuentes de datos.
 
 Describir un poco CMIP6 y DAMIP.
 
+```{r references}
+sims <- tar_read(sims) %>% 
+  .[, .(model = source_id,
+        # experiment = experiment_id,
+        id)] %>% 
+  unique() %>% 
+  .[, .(ref = paste0("[", paste0(paste0("@", id), collapse = "; "), "]")), by = model]
+```
+
+```{r simulaciones}
+simulaciones <- tar_read(simulaciones)
+```
+
+```{r ceofs}
+ceofs <- tar_read(ceofs) 
+```
+
+```{r modelos}
+ceofs %>% 
+  .[model != "ERA5"] %>% 
+  .[, eof[[1]]$left, by = .(experiment, model)] %>% 
+  .[, .(miembros = uniqueN(ensemble)), by = .(model, experiment)] %>% 
+  tidyr::pivot_wider(names_from = experiment, values_from = miembros, values_fill = 0) %>% 
+  as.data.table() %>% 
+  .[sims, on = "model"] %>% 
+  .[, model := paste(model, ref, sep = "\n")] %>% 
+  .[, ref := NULL] %>% 
+  .[, .(model, historical, `hist-GHG`, `hist-nat`, `hist-stratO3`, `hist-aer`)] %>% 
+  .[order(-historical, -(`hist-GHG` + `hist-nat` + `hist-stratO3` + `hist-aer`))] %>% 
+  setnames("model", "Modelo") %>% 
+  knitr::kable(caption = "Modelos analizados y la cantidad de miembros para cada experimento.",
+               format = "markdown", format.args = list(zero.print = "-"))
+```
+
+The models and number of members per experiment used in this study are listed in Table \@ref(tab:mdoelos).
+We used all available CMIP6 models with 5 or more members in the "historical" experiment and all available DAMIP models in the experiments containing only the effect of greenhouse gases ("hist-GHG"), natural variability nic forcings ("hist-nat"), anthropogenic aerosol forcings ("hist-aer") or only the effect of stratospheric ozone ("hist-stratO3") were used.
+
+The historical experiment includes all known external forcings and is designed to evaluate the ability of the models to correctly simulate present climate and observed climate change.
+In contrast, the rest of the experiments considered leave a certain forcing variable while fixing the remaining forcings.
+The hist-nat experiments are similar but only include solar and volcanic forcing, representing the climate response in the absence of anthropogenic forcing.
+The hist-GHG experiments are forced with well-mixed greenhouse gases only, leaving other changes in atmospheric chemistry such as ozone concentration fixed.
+The hist-aer simulations include only the forcing of changes in anthropogenic aerosol concentrations.
+On the other hand, hist-stratO3 simulations include only the forcing of stratospheric ozone variation, leaving all other atmospheric chemistry and tropospheric ozone concentrations constant.
+
+To calculate the cEOFs of a given model and experiment and evaluate its performance, all its members were concatenated into a single data set resulting in a single set of cEOFs.
+That is, this method considers $k$ simulations of $n$ years as a single simulation of $k\times n$ years.
+Then, the cEOFs were calculated following the methodology of Section \@ref(ceof-method).
+Then for each model and experiment a single (complex) spatial pattern per cEOF but in addition a (complex) time series per member was obtained.
+
+To make it comparable to ERA5, cEOFs were computed for the modern period, between 1979 and 2014 (the latest year available for all members).
+
+As explained above, cEOFs are not unequivocally defined as they accept any rotation in the complex plane analogously to how EOFs accept sign changes.
+The cEOFs computed in ERA5 were rotated to maximize the correlation with either stratospheric ozone or ENSO as described in Section \@ref(ceof-method).
+For the CMIP models, the cEOFs were rotated to maximize the spatial correlation of the patterns with the corresponding ERA5 cEOF. This looks for the pattern location to be similar to the observed one.
+
 Describir los cEOF brevemente.
 
 Describir A-SAM brevemente
@@ -121,24 +227,916 @@ Describir A-SAM brevemente
 
 ## Validation
 
-Validación de CMIP6 y de DAMIP.
+```{r plot_ceof}
+plot_ceof <- function(data, n, which_lev = 200) {
+  data <- data[, .(eof = list(cut(eof[[1]], n))), by = model]
+  
+  which_pc <- paste0("cEOF", n)
+  
+  models <- data %>% 
+    .[, eof[[1]]$sdev, by = model] %>%
+    .[cEOF == which_pc] %>% 
+    .[order(-correlation)] 
+  
+  labels <- models %>%
+    .[, setNames(paste0(model, "\n(", scales::number(correlation^2, 0.01), ")"), model)]
+  
+  data %>% 
+    .[, eof[[1]]$right, by = model] %>%
+    # .[, denormalise(eof[[1]], "right"), by = model] %>%
+    .[cEOF == which_pc] %>% 
+    # .[, eof[[1]]$right, by = model] %>%
+    .[, model := factor(model, levels = models$model)] %>%
+    .[lev == which_lev] %>% 
+    .[, eof := eof/max(Mod(eof)), by = model] %>% 
+    .[, interpolate_to_era(.SD), by = .(model, lev, cEOF)] %>% 
+    # .[, eof := eof/sd(eof), by = .(model)] %>% 
+    ggperiodic::periodic(lon = c(0, 360)) %>% 
+    ggplot(aes(lon, lat)) +
+    geom_contour_fill(aes(z = Re(eof)), breaks = AnchorBreaks(exclude = 0)) +
+    geom_contour2(aes(z = Im(eof), linetype = factor(-sign(..level..))), 
+                  breaks = AnchorBreaks(exclude = 0)) +
+    scale_linetype(guide = "none") +
+    scale_fill_divergent(guide = "none") +
+    geom_qmap(crop = c(ymax = -20)) +
+    scale_x_longitude() +
+    scale_y_latitude(limits = c(-90, NA)) +
+    coord_polar() +
+    facet_wrap(model ~., labeller = labeller(model = labels))
+}
+```
 
-Figuras de la tesis, inluyendo acá las regresiones con la altura geopotencial.
+```{r cors}
+cors <- ceofs %>% 
+  # .[model != "ERA5"] %>%
+  .[, eof[[1]]$sdev, by = .(experiment, model)] %>% 
+  copy() %>% 
+  .[, r2 := correlation^2] %>% 
+  .[, label := paste0(model, "\n(", scales::number(correlation^2, 0.01), ")")]
+```
 
-## Relationship with tropical variability
+Prior to other analyses, it was decided to evaluate the ability of the models to capture the properties of the observed cEOFs.
+For this, historical experiments were considered.
 
-De la tesis.
+Figure \@ref(fig:compare-r2) shows the $r^2$ of the spatial patterns of each model for the two cEOFs.
+In general these values range between `r combine_words(scales::percent(range(cors[experiment == "historical"]$r2)))`.
+In all cases, the correlation between simulated and observed cEOF1 is higher than that obtained for cEOF2.
+Although models with lower correlation with the observed modes can be identified, such as `r cors[experiment == "historical"][, model := reorder(model, r2, fun = mean)][, levels(model)[1:2]] %>% combine_words()`, even these are associated with values greater than 50%.
+
+(ref:compare-r2-cap) Coefficient of determination ($r^2$) of the spatial patterns of each model with ERA5 for cEOF1 (red) and cEOF2 (blue).
+
+```{r compare-r2, fig.width=5, fig.height=6}
+cors %>% 
+  .[experiment == "historical"] %>%
+  .[, model := reorder(model, r2, fun = mean)] %>% 
+  # .[, cEOF := forcats::fct_rev(cEOF)] %>%
+  ggplot(aes(r2, model)) +
+  geom_col(aes(fill = cEOF), 
+           position = position_dodge2(reverse = TRUE, padding = 0)) +
+  scale_fill_brewer(palette = "Set1") +
+  scale_x_continuous(name = NULL, limits = c(0, 1), labels = scales::percent_format()) +
+  scale_y_discrete(NULL)
+```
+
+To better understand the spatial patterns represented by each of the models, Figs.
+\@ref(fig:all-ceof1) and \@ref(fig:all-ceof2) show the 0° phase of cEOF1 and cEOF2, respectively, with the models ordered according to the $r^2$ of the respective cEOF and those represented by ERA5.
+For cEOF1 (Fig. \@ref(fig:all-ceof1)) all models except FGOALS-g3 (panel t) correctly capture the observed wave 1 pattern.
+The differences with ERA5 are visually minimal, as expected from the high spatial correlation of these patterns.
+For cEOF2 (Fig. \@ref(fig:all-ceof2)), all models capture the wave 3 pattern located in the Pacific-Atlantic sector.
+In particular, the positive center south of South America and the negative centers to the sides of it coincide in all models with the centers of ERA5.
+The main feature of the models with low correlation is the lower intensity and poor localization of the maximum located south of New Zealand.
+
+The multi-model mean pattern of the phase of each cEOF at each level, calculated by averaging the spatial pattern corresponding to each of the models is shown in Figure \@ref(fig:mmm), along with the $r^2$ of these patterns with respect to those observed.
+The patterns are extremely similar to those observed in ERA5 and have $r^2$ of 94% and 89% for cEOF1 and cEOF2 respectively.
+The multi-model average is more similar to the observed patterns than any individual model, indicating that the deficiencies of each model are compensated for by averaging.
+
+```{r interpolated}
+base <- ceofs[model == "ERA5"]$eof[[1]]$right %>% 
+  copy() %>% 
+  setnames("hgt", "base") %>%
+  .[, base := base/max(Mod(base)), by = .(cEOF, lev)] %>% 
+  .[, experiment := "historical"]
+
+grid <- base[, .(lon, lat)] %>% 
+  unique()
+interpolated <- ceofs[, eof[[1]]$right, by = .(experiment, model)] %>% 
+  copy() %>% 
+  .[model != "ERA5"] %>% 
+  .[, interpolate_to_era(.SD, grid = grid),
+    by = .(model, experiment, lev, cEOF)] %>% 
+  .[, hgt_norm := hgt/max(Mod(hgt), na.rm = TRUE), by = .(cEOF, lev, model, experiment)]
+```
+
+```{r mmm, fig.width=6, fig.height=4}
+
+cor_mmm <- interpolated %>% 
+  na.omit() %>% 
+  .[, mean(hgt_norm), by = .(cEOF, model, experiment, lon, lat, lev)] %>% 
+  .[, mean(V1), by = .(cEOF, experiment, lon, lat, lev)] %>% 
+  .[base, on = .NATURAL] %>% 
+  na.omit() %>% 
+  .[, weighted_correlation(Re(V1), Re(base), cos(lat*pi/180)), 
+    by = .(cEOF, experiment)] %>% 
+  .[, experiment := factor(experiment, levels = experiments)]
+
+ceof_labs <- cor_mmm %>% 
+  .[, paste0(cEOF, "\n(", scales::percent(V1^2, 1), ")") %>% 
+      setNames(cEOF)
+  ]
+
+interpolated %>% 
+  .[experiment == "historical"] %>% 
+  .[, mean(hgt_norm), by = .(cEOF, model, experiment, lon, lat, lev)] %>% 
+  .[, mean(V1), by = .(cEOF, experiment, lon, lat, lev)] %>% 
+  sep_ReIm() %>% 
+  periodic(lon = c(0, 360)) %>%
+  ggplot(aes(lon, lat)) +
+  
+  
+  geom_contour_fill(aes(z = V1), breaks = AnchorBreaks(exclude = 0)) +
+  geom_contour2(aes(z = base, linetype = factor(-sign(..level..))),
+                data = sep_ReIm(base) %>%
+                  periodic(lon = c(0, 360)),
+                breaks = AnchorBreaks(exclude = 0)) +
+  scale_linetype(guide = "none") +
+  scale_fill_divergent(guide = "none") +
+  geom_qmap(crop = c(ymax = -20)) +
+  scale_x_longitude() +
+  scale_y_latitude(limits = c(-90, NA)) +
+  coord_polar2() +
+  ggh4x::facet_nested(lev ~ cEOF + part, 
+                      labeller = labeller(lev = AddSuffix(" hPa"),
+                                          cEOF = ceof_labs,
+                                          part = lab_cplx)) 
+```
+
+(ref:mmm-cap) Multimodel mean (shaded, positive values in red, negative in blue) of the spatial fields of each cEOF, phase and level. Contours mark ERA5 patterns (positive values in filled lines, negative values in dashed line). The $r^2$ between ERA5 and the multimodel mean is in parentheses. Arbitrary units.
+
+The CMIP6 models then successfully capture the spatial patterns of the cEOFs in both the multi-model mean and the individual models.
+Next is to explore whether the models succeed in capturing second-order features, such as their variability and relationship to other parts of the climate system.
+
+## Tropical variability
+
+As shown in Section \@ref(sources-ceof), cEOF2 is strongly related to tropical variability.
+A first approach to explore this relationship in the CMIP6 models was to calculate the correlation between cEOF2 and ONI for each model (Figure \@ref(fig:cor-enso-plot)).
+It was found that almost all models have a high correlation between ONI and the 90° phase of cEOF2 and almost no correlation between ONI and the 0° phase of cEOF2, which is consistent with observations.
+However, there is great variability in the ability of models to capture this relationship.
+Some, such as MIROC6 and CESM2 have a correlation close to that observed, but in most it is much lower.
+IPSL-CM6A-LR and INM-CM5-0 show virtually no relationship between cEOF2 and ONI.
+
+```{r enso_cmip}
+tar_load(enso_cmip)
+
+enso_cmip <- ENSO() %>% 
+  fread() %>% 
+  .[season(time) == "SON"] %>% 
+  .[, .(oni = mean(oni)), by = .(time = year(time))] %>% 
+  .[, `:=`(model = "ERA5", member = factor("1.1.1.1"), experiment = "reanalysis")] %>% 
+  rbind(enso_cmip)
+
+
+enso_fft <- enso_cmip %>% 
+  # .[experiment %in% c("historical", "reanalysis")] %>% 
+  .[order(time)] %>% 
+  .[, fftspectrum(oni, c(3, 5), B = 0, probs = c(0, 0.95)), by = .(model, member, experiment)] 
+
+cors_enso_all <- ceofs[, eof[[1]]$left, by = .(experiment, model)] %>% 
+  .[cEOF == "cEOF2"] %>%
+  .[experiment %in% c("historical", "reanalysis")] %>% 
+  setnames("ensemble", "member") %>% 
+  enso_cmip[., on = .NATURAL, allow.cartesian = TRUE] %>% 
+  na.omit() %>% 
+  .[, c(correlate_complex(hgt, oni), list(n = .N)), by = .(model, experiment)]
+
+
+cors_enso <- cors_enso_all %>%
+  .[angle == 0] 
+
+labs_cor_enso <- cors_enso %>% 
+  .[part == "Imaginario"] %>% 
+  .[, label := paste0(model, "\n(", scales::number(correlation^2, accuracy = 0.01), ")")] %>% 
+  .[, setNames(label, model)]
+```
+
+(ref:cor-enso-plot-cap) Coefficient of determination ($r^2$) between the ONI index and the 0° (blue) and 90° (red) phases of cEOF2 for each CMIP6 model and for ERA5.
+
+```{r cor-enso-plot, fig.width=4, fig.height=6}
+cors_enso_all %>% 
+  .[angle == 0] %>% 
+  copy() %>% 
+  .[, model := reorder(model, ifelse(part == "Real", 0, correlation^2))] %>% 
+  ggplot(aes(correlation^2, model)) +
+  geom_col(aes(fill = part), position = "dodge2") +
+  scale_x_continuous(name = r2, labels = scales::percent_format()) +
+  scale_y_discrete(name = NULL) +
+  scale_fill_fase()
+
+```
+
+```{r arg-enso-density, fig.width=6, fig.height=5}
+ceofs[, eof[[1]]$left, by = .(model, experiment)] %>% 
+  .[cEOF == "cEOF2"] %>% 
+  # .[, hgt := Anomaly(hgt)] %>% 
+  .[, arg := Arg(hgt)] %>%
+  .[, mag := Mod(hgt)] %>%
+  .[enso_cmip, on = c("time", "model", "experiment", "ensemble" = "member")] %>% 
+  .[cors_enso[part == "Imaginario"], on = .NATURAL] %>% 
+  .[, model := reorder(model, -(correlation^2)*(part == "Imaginario"))] %>% 
+  na.omit() %>% 
+  .[, ninio := cut(oni, c(-Inf, -0.5, 0.5, Inf), label = c("ONI < -0.5", "-0.5 < ONI < 0.5", "ONI > 0.5"))] %>% 
+  qwrap(arg = c(-pi, pi) ~ c(-2*pi, 2*pi)) %>% 
+  
+  ggplot(aes(arg)) +
+  # geom_density(aes(group = model)) +
+  geom_density(aes(color = ninio),
+               adjust = 0.5) +
+  stat_density(aes(fill = ninio),
+               adjust = 0.5, geom = "area",
+               alpha = 0.4, position = "identity") +
+  scale_color_brewer(NULL, palette = "Dark2", aesthetics = c("color", "fill")) +
+  scale_y_continuous(NULL) +
+  scale_x_continuous("Fase de cEOF2",
+                     breaks =  seq(-pi, pi, by = 90*pi/180)[-1],
+                     labels = function(x) paste0(round(x*180/pi, 5), "º")) +
+  facet_wrap(~model, labeller = labeller(model = labs_cor_enso)) +
+  coord_cartesian(xlim = c(-pi, pi)) 
+
+```
+
+(ref:arg-enso-density-cap) Kernel density estimate of the cEOF2 phase for springs with ONI less than -0.5 (green), between -0.5 and 0.5 (orange), and greater than 0.5 (blue) for the CMIP6 models in the 1979-2014 period and for ERA5 in the `r period`.
+
+The relationship between cEOF2 and ENSO is explained by a phase preference when the tropical forcing is active.
+To evaluate this in CMIP6 models, Figure \@ref(fig:enso-phase-cmip) shows the relationship between ENSO and cEOF2 phase for CMIP6 models and Figure \@ref(fig:arg-enso-density) the distribution of cEOF2 phases for springs with ONI less than -0.5, greater than 0.5 and intermediate values.
+Models with a high correlation between cEOF2 and ENSO show a strong sinusoidal relationship, while in models with low correlation the relationship is flatter.
+The phase distributions according to ONI index categories (Fig. \@ref(fig:arg-enso-density)) are well separated in observations and in models with high correlation between cEOF2 and ONI.
+In these models (e.g. MIROC6, CESM2), when ENSO is active (defined as ONI \> 0.5 or ONI \< -0.5), the phase of cEOF2 is concentrated near \$\pm\$0.5° (depending on the sign of ONI) whereas when ENSO is not as active (defined as ONI between -0.5 and 0.5), the phase distribution is more uniform.
+In models with low correlation between cEOF2 and ONI (e.g., IPSL-CM6A-LR, INM-CM5-0) the phase distribution is uniform regardless of ENSO activity.
+
+```{r fft}
+fft <- ceofs %>% 
+  .[, eof[[1]]$left, by = .(experiment, model)] %>% 
+  .[, hgt := hgt/sd(Mod(hgt)), by = .(model, experiment, cEOF)] %>%
+  sep_ReIm() %>% 
+  copy() %>% 
+  .[order(time)] %>% 
+  .[, fftspectrum(hgt, c(3, 5), B = 0, probs = c(0, 0.95)), by = .(model, experiment, ensemble, cEOF, part)]
+```
+
+```{r con_picos}
+con_picos <- data.table(
+  model = c("FGOALS-g3", "MIROC6", "GISS-E2-1-G", 
+            "CESM2", "CNRM-ESM2-1", "CNRM-CM6-1")
+)
+
+rect <- geom_rect(data = ~.x[con_picos, on = "model"] %>% 
+                    .[, model := reorder(model, -(correlation^2)*(part == "Imaginario"))],
+                  inherit.aes = FALSE,
+                  xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf,
+                  fill = NA, color = "#7e8087") 
+```
+
+```{r fft-ceof2, fig.height=6, fig.width=6}
+enso_gdata <- enso_fft %>% 
+  .[cors_enso[part == "Imaginario"], on = .NATURAL] %>% 
+  .[, model := reorder(model, -(correlation^2)*(part == "Imaginario"))] %>% 
+  .[, ensembleN := uniqueN(member), by = model] %>% 
+  .[, .(spec = mean(spec)), by = .(freq, model)]
+
+fft %>% 
+  .[cEOF == "cEOF2"] %>% 
+  .[experiment %in% c("historical", "reanalysis")] %>% 
+  # .[, .(spec = mean(spec)), by = .(freq, part, model, cEOF)] %>% 
+  .[cors_enso, on = .NATURAL] %>% 
+  .[, model := reorder(model, -(correlation^2)*(part == "Imaginario"))] %>% 
+  .[, ensembleN := uniqueN(ensemble), by = model] %>% 
+  ggplot(aes(1/freq, spec)) +
+  # geom_ribbon(aes(ymin = 0, ymax = `95%`), position = "dodge", alpha = 0.1) +
+  # geom_line(aes(y = ar_spectrum), alpha = 0.15) +
+  geom_line(data = enso_gdata, aes(y = spec*3, color = "ONI")) +
+  geom_line(aes(color = part, group = interaction(part, ensemble),
+                alpha = alpha_from_n(ensembleN, 0.9))) +
+  geom_line(data = ~.x[, .(spec = mean(spec)), by = .(freq, part, model, cEOF)],
+            aes(color = part)) +
+  # annotation_logticks(sides = "b") +
+  scale_color_manual(name= NULL, 
+                     values = c(Real = color_real, 
+                                Imaginario = color_imaginario,
+                                ONI = "gray20"), 
+                     labels = setNames(paste0("cEOF2 - ", lab_cplx), names(lab_cplx))) +
+  scale_x_log10("Período (años)") +
+  scale_y_continuous("Espectro")  +
+  scale_alpha_identity() +
+  facet_wrap(model ~ ., labeller = labeller(model = labs_cor_enso)) +
+  rect
+```
+
+(ref:fft-ceof2-cap) Fourier spectra in each model for the 90° phase of cEOF2 (orange), for the 0° phase of cEOF2 (violet) and for ONI (black). Dark line is the average spectrum of all members, shown in translucent lines. The ONI spectrum is the average spectrum of all members of each model. Panels are ordered from largest to smallest according to the $r^2$ between the 90° phase of cEOF2 and ONI, which is shown in parentheses in the title of each panel.
+
+The relationship between cEOF2 and ENSO is also evident in the similarity of the periodogram of the series.
+Figure \@ref(fig:fft-ceof2) shows the periodogram for cEOF2 with one line per limb and a thick line marking the average periodogram, as well as the average ONI periodogram of each model.
+Most models have an ONI periodicity of 3 years similar to that observed in ERA5, although the intensity and maximum period vary significantly.
+
+All of the models that have a clear periodicity at \~3 yr in the 90° phase of cEOF2 also have a very clear ENSO periodicity and also tend to have a correlation between the 90° phase of cEOF2 and ENSO higher.
+On the other hand, none of the models with very low correlation with ENSO but clear ENSO periodicity have clear periodicity in cEOF2.
+
+However, there are models with clear ENSO periodicity and relatively high correlation that do not have clear cEOF2 periodicity.
+MRI-ENSM2-0, UKESM1-0-LL, MPI-ESM1-2-LR are some examples.
+
+These observations suggest that ENSO is the source of cEOF2 periodicity in CMIP6 models but that their ability to represent observed periodicity depends not only on ENSO periodicity and the degree of correlation between the indices.
+
+(ref:sst-mmm-cap) Multi-model mean of SST regression with the 0° and 90° phases of each cEOF (K). The shaded area shows the areas where more than half of the models have p-values less than 0.01. The black contours show the SST regression observed in ERA5.
+
+```{r, sst_regr_cmip6}
+tar_load(sst_regr_cmip6)
+```
+
+```{r sst-mmm, fig.width=6, fig.height=3.3}
+sst_regr_cmip6 %>% 
+  .[, pval := Pvaluate(estimate, std.error, df)] %>% 
+  .[, .(estimate = mean(estimate), 
+        prop = mean(pval < 0.01)), by = .(lon, lat, experiment, cEOF, term)] %>% 
+  .[, term := factor_ReIm(term)] %>% 
+  ggplot(aes(lon, lat)) +
+  geom_contour_fill(aes(z = estimate, fill = after_stat(level)), 
+                    breaks = AnchorBreaks(exclude = 0)) +
+  geom_contour_pval(aes(z = prop), p.value = 0.5, hatch = 9, pattern_spacing = 0.05) +
+  
+  # geom_contour2(aes(z = era5, linetype = factor(-sign(..level..))),
+  #               data = sst_regression_ERA5,
+  #               breaks = AnchorBreaks(exclude = 0)) +
+  geom_qmap() +
+  scale_y_latitude() +
+  scale_x_continuous(name = NULL, breaks  = seq(0, 360, by = 60), expand = c(0, 0)) +
+  scale_fill_divergent_discretised("TSM",
+                                   labels = label_one_less,
+                                   guide = guide_colorsteps_bottom(width = 15,
+                                                                   show.limits = FALSE,
+                                                                   ticks = TRUE,
+                                                                   order = 1)) +
+  scale_linetype(guide = "none") +
+  coord_sf(ylim = c(10, -90), xlim = c(0, 360), crs = "+proj=lonlat +over") +
+  facet_grid(cEOF ~ term, labeller = labeller(term = lab_cplx)) 
+```
+
+To study this relationship in more detail, the relationship between cEOFs and SST anomalies was evaluated.
+Figure \@ref(fig:sst-mmm) shows the multi-model mean of the regression between SST and the two phases of each cEOF, marking the areas where more than half of the models have p-values less than 0.01.
+The CMIP6 models reproduce the regression patterns of the 90° phase of cEOF2 relatively well.
+Excess signal is observed in the equatorial Pacific in the 0° phase of cEOF2 which is likely due to these modes not being aligned to minimize this relationship.
+On the other hand, the signal associated with the 90º phase of cEOF1 does show excessively high values not observed in ERA5.
+
+(ref:cor-sst-regr-cap) Coefficient of determination ($r^2$) between the regression patterns of the 0° (purple) and 90° (orange) phases of each cEOF and SST each model and the respective regression pattern of ERA5.
+
+```{r cor-sst-regr, fig.width=6, fig.height=4}
+sst_cors <- sst_regression %>% 
+  .[, Interpolate(estimate ~ lon + lat,
+                  x.out = unique(sst_regression_ERA5$lon),
+                  y.out = unique(sst_regression_ERA5$lat)),
+    by = .(model, experiment, term, cEOF)] %>%
+  na.omit() %>% 
+  .[sst_regression_ERA5, on = .NATURAL] %>% 
+  .[, correlate(estimate, era5), by = .(model, experiment, term, cEOF)] %>% 
+  .[, r2 := estimate^2]
+
+sst_cors %>% 
+  .[, r2_ceof2 := r2[cEOF == "cEOF2" & term == "Imaginario"],
+    by = .(model, experiment)] %>% 
+  .[, model := reorder(model, r2_ceof2, fun = mean)] %>% 
+  {
+    models_sst_cor <<- levels(.$model)
+    .
+  } %>% 
+  
+  .[, picos := model %in% con_picos$model & cEOF == "cEOF2" & term == "Imaginario"] %>% 
+  ggplot(aes(r2, model)) +
+  # geom_col(aes(x = 1 , 
+  #               y = ifelse(picos, model, NA)), alpha = 0.2, fill = "gray50") +
+  geom_col(aes(fill = term), 
+           position = position_dodge2(reverse = TRUE, padding = 0)) +
+  scale_fill_fase() +
+  scale_x_continuous(r2, limits = c(0, 1), labels = scales::percent_format()) +
+  scale_y_discrete(NULL) +
+  facet_wrap(~cEOF)
+
+```
+
+To have a global and quantitative view of this comparison, Figure \@ref(fig:cor-sst-regr) shows the $r^2$ between the SST regressions associated with the 90° phase of cEOF2 for each model and the corresponding regression for ERA5.
+For most models the pattern is similar to that observed, except for INM-CM5-0.
+The regressions associated with the 0º phase of cEOF2, on the other hand, have low similarity to that observed in almost all models.
+Possibly this is due to the excess signal present in the ENSO region.
 
 Explorar DAMIP. Con suerte no da particularmente distinto y no se muestra.
 
 ## Relationship with SAM
 
-Idem arriba
+Section \@ref(sam-ceof) showed that there was a significant relationship between the different phases of the cEOFs and the different components of the SAM.
+Figure \@ref(fig:cor-sam-cmip6) shows the $r^2$ between the SAM components and the phases of the cEOFs for the CMIP6 models.
+The translucent lines are the values for each model and the filled areas represent the multi-model average and its 95% confidence interval; the thick line corresponds to the ERA5 value.
+
+```{r sam_cors}
+sam_rename <- c(sam = "full",
+                asam = "asym",
+                ssam = "sym")
+
+
+cmip_sam <- readRDS(data_path("derived", "cmip_sam.Rds")) 
+
+cmip_sam_series <- cmip_sam %>% 
+  .[, time_series[[1]], by = .(model, experiment, lev)] %>% 
+  setnames("type", "term") %>% 
+  .[, term := sam_rename[term]] %>% 
+  .[, estimate_norm := estimate/sd(estimate[term == "full" & year(time) %between% c(1979, 2014)]),
+    by = .(model, experiment, lev)]
+
+indices <- SAM() %>% 
+  fread() %>% 
+  .[, time := as.Date(time)] %>% 
+  .[, `:=`(model = "ERA5",
+           experiment = "reanalysis",
+           ensemble = "1.1.1.1", 
+           PC = NULL, 
+           adj.r.squared = NULL)] 
+
+sam_series <- rbind(indices, cmip_sam_series)
+
+levs <- sam_series[model == "ERA5", unique(lev)]
+
+sam_cors <- sam_series %>% 
+  .[season(time) == "SON"] %>% 
+  .[, .(estimate = mean(estimate)), 
+    by = .(model, experiment, ensemble, term, time = year(time), lev)] %>% 
+  .[ceofs[, eof[[1]]$left, by = .(model, experiment)], 
+    on = c("model", "experiment", "ensemble", "time")] %>% 
+  # best_angle[., on = .NATURAL] %>% 
+  # .[cEOF == "cEOF2", hgt := rotate(hgt, angle)] %>% 
+  sep_ReIm() %>% 
+  na.omit() %>% 
+  # .[experiment %in% c("historical", "reanalysis")] %>% 
+  .[, .(correlation = cor(estimate, hgt)), 
+    by = .(model, ensemble, experiment, cEOF, term, part, lev)]
+
+
+rm(indices, cmip_sam_series, cmip_sam, sam_series)
+```
+
+```{r cor-sam-cmip6, fig.height=5, fig.width=6}
+gdata <- sam_cors %>% 
+  .[, .(correlation = mean(correlation)), by = .(cEOF, term, model, experiment, part, lev)] %>% 
+  .[, approx(lev, correlation, xout = levs), by = .(cEOF, term, model, experiment, part)] %>% 
+  setnames(c("x", "y"), c("lev", "correlation")) %>% 
+  .[, term := factor_sam(term)]
+
+# facet_grid2 shenanigans
+panels <- paste(rep(letters[1:4], each = 4), rep(1:4, 3), sep = ".")
+order <- order(c(1, 5, 9, 2, 6, 10, 3, 7, 11, 4, 8, 12))
+panels <- panels[order]
+
+# gdata <- gdata %>% 
+#   .[, ggplot2::mean_se(correlation^2), by = .(lev, experiment, cEOF, part, term)]
+
+ggplot(mapping = aes(lev, correlation^2)) +
+  geom_line(data = gdata[experiment == "reanalysis"] %>% 
+              .[, experiment := NULL],
+            aes(color = term), 
+            linewidth = 2) +
+  stat_summary(data = gdata[experiment != "reanalysis"] %>% 
+                 .[experiment == "historical"],
+               fun.data = \(x) mean_se(x,
+                                       mult = qt(.025, length(x), 
+                                                 lower.tail = FALSE)), 
+               
+               geom = "ribbon", alpha = 0.4, aes(fill = term)) +
+  
+  
+  stat_summary(data = gdata[experiment != "reanalysis"] %>% 
+                 .[experiment == "historical"],
+               fun = mean, 
+               geom = "line", alpha = 1, aes(color = term)) +
+  
+  geom_line(data = gdata[experiment != "reanalysis"][experiment == "historical"],
+            aes(group = interaction(term, model), color = term), alpha = 0.1) +
+  
+  # geom_line(data = gdata[experiment != "reanalysis"][experiment == "historical"] %>% 
+  #             .[model == "NorCPM1"],
+  #           aes(group = interaction(term, model))) +
+  
+  
+  ggh4x::facet_grid2(term ~ cEOF + part, 
+                     labeller = labeller(part = lab_cplx, 
+                                         term = c(full = "SAM",
+                                                  asym = "A-SAM",
+                                                  sym = "S-SAM")), 
+                     strip = ggh4x::strip_nested()) +
+  coord_flip() +
+  scale_x_level() +
+  scale_y_continuous(name = r2,  limits = c(0, 1), 
+                     labels = scales::percent_format()) +
+  scale_color_brewer(NULL, palette = "Dark2", labels = c(full = "SAM",
+                                                         asym = "A-SAM",
+                                                         sym = "S-SAM"), 
+                     aesthetics = c("colour", "fill")) +
+  tag_facets(position = "tr", tag_pool = panels) +
+  panel_background() 
+```
+
+(ref:cor-sam-cmip6-cap) Coefficient of determination ($r^2$) between the 0° (column 1 and 3) and 90° (column 2 and 4) phase of the cEOFs with the SAM (row a), A-SAM (row b) and S-SAM (row c) for each level. The translucent lines are the average values for each model and the filled areas represent the multi-model average and its 95% confidence interval. The thick line is the value of ERA5. Equivalent to Figure \@ref(fig:sam-eof-vertical).
+
+The relationship between cEOF1 and SAM in the CMIP6 models is found to be similar to that observed, although with differences in magnitude.
+
+As for cEOF2, the CMIP6 models correctly capture the lack of correlation between 0° phase of cEOF2 and SAM and S-SAM (panels a.3 and c.3), but have a higher than expected level of correlation with A-SAM in the troposphere (panel c.2).
+The 90° phase, on the other hand, does not show the observed relationship with SAM in the troposphere (panel a.4).
+Despite this, it does have a high relationship with the A-SAM (panel b.4).
+This implicitly suggests that the CMIP6 models do not correctly capture the relationship between PSA2 and SAM, but this relationship does appear if only the variability of the asymmetric part of the SAM is filtered out.
 
 ## Trends
 
-Tesis.
+```{r trend_base}
+trend_base <- 1940
+```
+
+From the previous section it emerges that CMIP6 models manage to capture the spatial structure of cEOFs correctly and that some models also capture their variability and relationship with other components of the climate system.
+
+In this section, the long runs of these models and the DAMIP experiments were used to study the long-term trends and their possible forcings.
+To extend the time series for the entire period available in CMIP6 and DAMIP, the spatial fields of the two cEOFs for the period 1979--2014 were projected onto the fields from 1850 to 2014.
+
+```{r regression_hgt}
+
+ceofs_standard <- ceof_largo_p %>% 
+  sep_ReIm() %>% 
+  .[, hgt := Anomaly(hgt, time <= 1900), by = .(model, experiment, part, ensemble, cEOF)] %>% 
+  .[, hgt := hgt/sd(hgt[time <= 1900]), by = .(model, experiment, part, ensemble, cEOF)] %>% 
+  .[, r2 := NULL] %>% 
+  .[time >= trend_base] %>% 
+  .[, .(hgt = mean(hgt)), by = .(experiment, model, time, cEOF, part)] %>% 
+  tidyfast::dt_pivot_wider(names_from = part, values_from = hgt)
+
+first_time <- paste0(trend_base, "-09-15")
+
+regression_hgt_ <- function(this_model, this_experiment, 
+                            serie = ceofs_standard) {
+  files <- simulaciones %>% 
+    .[variable == "zg"] %>% 
+    .[model == this_model & experiment == this_experiment] 
+  
+  message("Procesando: ", files$file[1])
+  data <- lapply(seq_len(nrow(files)), function(i) {
+    ReadNetCDF(files[i, ]$file, vars = c(hgt = "zg"), 
+               subset = list(lat  = c(-90, 10),
+                             time = c(first_time, NA))) %>% 
+      .[, time := year(time)] %>% 
+      .[, ensemble := files[i, ]$member] 
+  }) %>% 
+    rbindlist() %>% 
+    .[, hgt := hgt - mean(hgt), by = .(lon, lat, plev, ensemble)] %>% 
+    .[, .(hgt = mean(hgt)), by = .(lon, lat, plev, time)] 
+  
+  serie %>%
+    .[model == this_model & experiment == this_experiment] %>%
+    .[data, on =  .(time), allow.cartesian = TRUE] %>%
+    .[, FitLm(hgt, Real, Imaginario), by = .(cEOF, plev, lon, lat)]
+}
+
+regression_hgt <- memoise::memoise(regression_hgt_, cache = cachem::cache_disk(here::here("cache", "memoise", "regression_hgt")))
+
+```
+
+```{r hgt_regression_mmm}
+hgt_regression <- simulaciones %>%
+  .[variable == "zg"] %>% 
+  # .[, .SD[model %in% unique(model)[1:2]], by = .(experiment)] %>%
+  .[, regression_hgt(model, experiment), by = .(model, experiment)] 
+
+
+hgt_regression_mmm <- hgt_regression %>% 
+  rm_intercept() %>% 
+  setnames("estimate", "hgt") %>% 
+  .[, interpolate_to_era(.SD), by = .(plev, cEOF, term, experiment, model)] %>% 
+  na.omit() %>% 
+  .[, .(hgt = mean(hgt)), by = .(lon, lat, plev, cEOF, term, experiment)] 
+```
+
+```{r era_regr}
+era5 <- ERA5_geopotential() %>% 
+  ReadNetCDF(vars = c(hgt = "z"),
+             subset = list(level = list(50),
+                           latitude = -90:-10,
+                           time = main_period)) %>% 
+  .[, hgt := hgt/9.8] %>% 
+  normalise_coords() %>% 
+  na.omit() %>%   # Tengo que omitirlo por la forrada del expver
+  .[season(time) == "SON"] %>% 
+  # .[is.full_season(time)] %>% 
+  .[, w := season_weights(time)] %>% 
+  .[, .(hgt = mean(hgt*w)), by = .(lev, lon, lat, time = data.table::year(time))]
+
+
+era_regr <- ceofs[model == "ERA5", eof[[1]]$left] %>%
+  .[cEOF == "cEOF1"] %>% 
+  sep_ReIm(format = "wide") %>%
+  .[, hgt := NULL] %>%
+  .[, `:=`(Real = as.numeric(scale(Real)), Imaginario = as.numeric(scale(Imaginario))),
+    by = .(cEOF)] %>%
+  .[era5, on = "time", allow.cartesian = TRUE] %>%
+  .[, FitLm(hgt, Imaginario, Real),
+    by = .(lev, lon, lat, cEOF)] %>%
+  rm_intercept() %>%
+  .[, term := factor_ReIm(term)]
+```
+
+```{r regresion-hgt-damip, fig.width=6, fig.height=9}
+hgt_regression_mmm %>% 
+  # .[!(experiment %in% c("hist-nat"))] %>%
+  .[cEOF == "cEOF1"] %>%
+  .[, plev := as.integer(plev/100)] %>% 
+  .[plev == 50] %>%
+  .[, term := factor_ReIm(term)] %>% 
+  .[, experiment := factor(experiment, levels = experiments)] %>%
+  data.table::setnames("plev", "lev") %>% 
+  # .[, hgt := hgt + rnorm(.N)*1] %>% 
+  periodic(lon = c(0, 360)) %>%
+  ggplot(aes(lon, lat)) +
+  geom_contour_fill(aes(z = hgt, fill = after_stat(level)),
+                    breaks = AnchorBreaks(exclude = 0)) +
+  # geom_contour_tanaka(aes(z = hgt),
+  #                     breaks = AnchorBreaks(exclude = 0)) +
+  # geom_contour2(aes(z = estimate, linetype = factor(-sign(..level..))),
+  #             data = era_regr %>% 
+  #               periodic(lon = c(0, 360)),
+  #             breaks = AnchorBreaks(exclude = 0)) +
+  scale_linetype(guide = "none") +
+  scale_fill_divergent_discretised(name = NULL,
+                                   labels = label_one_less,
+                                   guide = guide_colorsteps_bottom(width = 15,
+                                                                   show.limits = FALSE,
+                                                                   ticks = TRUE,
+                                                                   order = 1)) +
+  
+  geom_qmap(crop = c(ymax = -20)) +
+  scale_x_longitude() +
+  scale_y_latitude(limits = c(-90, NA)) +
+  coord_polar2() +
+  facet_grid(experiment ~ term, 
+             labeller = labeller(term = lab_cplx)) +
+  tag_facets(tag = "rc")
+
+```
+
+(ref:regresion-hgt-damip-cap) Regression of geopotential height anomalies (m) with the 0° (column 1) and 90° (column 2) phase of cEOF1 at 50 hPa for the `r trend_base`--2014 period for the CMIP6 and DAMIP experiments.
+
+The spatial patterns of both cEOFs are very similar in all experiments and comparable to that observed in Figure \@ref(fig:mmm) (not shown).
+The regression with geopotential height, on the other hand, has differences in the case of cEOF1.
+These regressions are shown in Figure \@ref(fig:regression-hgt-damip) for the 50 hPa level.
+While the general location of the maxima is similar in all experiments, in the historical experiment, the 0° phase is associated with a wave 1 while the 90° phase is associated a monopole with the center over East Antarctica (Fig. \@ref(fig:regression-hgt-damip) row a).
+This is the opposite of what was observed in ERA5, where the 0° phase was the one associated with a more zonally symmetric structure (Fig. \@ref(fig:eof1-regr-gh)).
+This is also the case for the hist-stratO3 experiment, although a wave 1 rather than a monopole is observed in phase 90 (Fig \@ref(fig:regression-hgt-damip), row c).
+On the other hand, the regressions for the hist-aer experiment (Fig. \ref(fig:regression-hgt-damip) row e) are more similar to those observed, as well as those for the hist-GHG experiment (Fig. \ref(fig:regression-hgt-damip) row b) and to a lesser extent for the hist-nat experiment (Fig. \ref(fig:regression-hgt-damip), row d).
+
+```{r series-largas, fig.width=6, fig.height=4}
+ceof_largo_p %>% 
+  sep_ReIm() %>% 
+  .[experiment == "historical"] %>% 
+  .[, hgt := Anomaly(hgt, time >= 1900), by = .(model, experiment, part, ensemble, cEOF)] %>%
+  .[, hgt := hgt/sd(hgt[time >= 1900]), by = .(model, experiment, part, ensemble, cEOF)] %>% 
+  .[, .(hgt = mean(hgt)), by = .(model, experiment, time, part, cEOF)] %>% 
+  ggplot(aes(time, hgt)) +
+  geom_line(aes(group = model), 
+            alpha = 0.1) +
+  geom_line(data = ~.x[, .(hgt = mean(hgt)), by = .(time, experiment, cEOF, part)]) +
+  scale_x_continuous(NULL) +
+  scale_y_continuous(NULL) +
+  scale_color_fase(name = NULL, guide = "none") +
+  coord_cartesian(ylim = c(-1, 1)) +
+  facet_grid(cEOF ~ part, labeller = labeller(part = lab_cplx))
+```
+
+(ref:series-largas-cap) Time series of standardized anomalies of the cEOFs computed using the period 1850 - 2014 averaged for each model (translucent lines) and their multi-model mean (dark line). Anomalies are computed with respect to the mean between 1850 and 1900. Translucent lines show the series for each model.
+
+Figure \@ref(fig:extended-series) shows the time series over the entire period.
+The 0° phase of cEOF1 has a small positive trend starting around `r trend_base`, consistent with the trend observed in ERA5 (Fig. \@ref(fig:extended-series)).
+However, the 90° phase of cEOF1 has a much larger negative trend, which is not present in ERA5.
+
+```{r trends}
+trends <- ceof_largo_p %>% 
+  sep_ReIm() %>% 
+  .[experiment %in% c("historical", "reanalysis")] %>%
+  .[, hgt := Anomaly(hgt, time >= 1900), by = .(model, experiment, part, ensemble, cEOF)] %>% 
+  .[, hgt := hgt/sd(hgt[time >= 1900]), by = .(model, experiment, part, ensemble, cEOF)] %>%
+  .[time >= trend_base] %>% 
+  # .[, .(hgt = mean(hgt)), by = .(model, experiment, ensemble, time, part, cEOF)] %>% 
+  .[, FitLm(hgt, time = time/10, se = TRUE), 
+    by = .(model, cEOF, ensemble, part, experiment)] %>% 
+  .[term == "time"] %>%
+  .[, p.value := Pvaluate(estimate, std.error, df, "fdr"), 
+    by = .(model, experiment, cEOF)] %>% 
+  cors[., on = c("model", "experiment", "cEOF")] 
+
+plot_trend <- function(data) {
+  data %>% 
+    .[, model := paste0(model, "\n(", scales::number(correlation^2, 0.01), ")")] %>% 
+    .[, model := reorder(model, correlation^2)] %>% 
+    ggplot(aes(model, estimate)) +
+    geom_hline(yintercept = 0, color = "gray50") +
+    geom_point(alpha = 0) +
+    geom_boxplot(width = 0.5,
+                 outlier.shape = NA,
+                 fill = NA,
+                 data = ~.x[!startsWith(as.character(model), "ERA5")]) +
+    ggforce::geom_sina(aes(shape = p.value < 0.05,
+                           size = p.value < 0.05,
+                           group = interaction(part, model)),
+                       alpha = 1
+                       # size = 1,
+    ) +
+    geom_hline(data = \(x) x %>% 
+                 .[, .(estimate = mean(estimate)), by = .(part, model)] %>% 
+                 .[, .(estimate = mean(estimate)), by = .(part)], 
+               aes(yintercept = estimate), linetype = 2) +
+    scale_color_brewer(NULL, palette = "Set1") +
+    scale_x_discrete(NULL) +
+    scale_y_continuous("Tendencia (desvío estándard por década)") +
+    coord_flip()  +
+    scale_shape_manual(values = c("FALSE" = 19,
+                                  "TRUE" = 4), 
+                       guide = "none") +
+    scale_size_manual(values = c("TRUE" = 2.5,
+                                 "FALSE" = 0.5),
+                      guide = "none") +
+    facet_wrap(~part, labeller = labeller(part = lab_cplx)) +
+    NULL
+}
+```
+
+```{r trends-ceof1,fig.width=6, fig.height=6}
+trends %>% 
+  .[cEOF == "cEOF1"] %>% 
+  plot_trend()  
+```
+
+(ref:trends-ceof1-cap) Linear trends of each phase of cEOF1 from `r trend_base`. Each point represents a member, where members with significant trends (p-value \< 0.01) are marked with a cross. The dashed vertical line represents the average trend of all models.
+
+The trends of each phase of cEOF1 for each model from `r trend_base` are shown in Figure \@ref(fig:trends-ceof1) along with the average trend of all models.
+The average trend for the 0° phase is positive but very small.
+In addition, the models are not consistent in their trends and only a few models have a positive average trend.
+On the other hand, the trends of the 90º phase are more consistent.
+
+These trends are incompatible with the observed cEOF1 variability, which has a positive trend in its 0º phase and no trend in its 90º phase.
+It is possible that the models have some fundamental problem in capturing long-term variability in this way, either because of flaws in the internal dynamics or because of some problem with the forcing involved.
+
+It is also possible that the observed trend is due to low-frequency internal variability.
+In this case, the models would not be expected to correctly capture the phase of this variability, so it would not be observable in either the multi-model mean or the individual member trends particularly in the `r trend_base`--2014 period.
+ERA5 can be considered as a particular realization of the climate ensemble and it is possible that the particular trend observed is not necessarily representative of the external forcing.
+
+Alternatively, given that cEOF1 captures the mean field of the zonal geopotential height anomalies and that the various CMIP6 models potentially have a different mean field than ERA5, the chosen rotation of cEOF1 may not be ideal for capturing the long-term variability compatible with what is observed in ERA5.
+
+Figure \@ref(fig:ceof-damip) shows the time series for the hist-GHG, hist-nat, hist-stratO3 and hist-aer experiments along with the historical experiment and Figure \@ref(fig:map-trend) shows the trends in geopotential height at 50 hPa that are explained by each phase of cEOF1 and the sum of the two.
+This was calculated as the value of the linear regression between each cEOF1 phase and the geopotential height multiplied by the linear trend of each cEOF1 phase.
+In these figures the hist-nat and hist-aer experiments are excluded as their trends are insignificant.
+
+```{r ceof-damip, fig.width=6, fig.height=4}
+ceof_largo_p %>% 
+  sep_ReIm() %>% 
+  .[, hgt := Anomaly(hgt, time <= 1900), by = .(model, experiment, part, ensemble, cEOF)] %>% 
+  .[, hgt := hgt/sd(hgt[time <= 1900]), by = .(model, experiment, part, ensemble, cEOF)] %>% 
+  # .[, eof := scale_eof(eof, time <= 1900), by = .(model, experiment, part, ensemble, cEOF)] %>%
+  # .[, eof := scale(eof, center = mean(eof[time <= 1900]), 
+  #                  scale = sd(eof[time <= 1900])),
+  #   by = .(model, part, cEOF)] %>% 
+  .[, .(hgt = mean(hgt)), by = .(model, experiment, time, part, cEOF)] %>% 
+  # .[experiment != "historical"] %>% 
+  
+  ggplot(aes(time, hgt, color = experiment)) +
+  # geom_line(aes(group = model), alpha = 0.1) +
+  geom_line(data = ~.x[, .(hgt = mean(hgt)), by = .(time, experiment, cEOF, part)], 
+            alpha = 0.3) +
+  geom_smooth(data = ~.x[, .(hgt = mean(hgt)), by = .(time, experiment, part, cEOF)],
+              show.legend = FALSE) +
+  
+  # geom_line(data = ceof_era5[, eof[[1]]$left] %>% sep_ReIm() %>% .[, eof := scale_eof(eof), by = .(cEOF, part)]) +
+  scale_x_continuous(NULL) +
+  scale_y_continuous(NULL) +
+  scale_color_experiments(guide = guide_legend(override.aes = list(linewidth = 2, alpha = 1))) +
+  # coord_cartesian(ylim = c(-1.5, 1.5)) +
+  facet_grid(cEOF ~ part, labeller = labeller(part = lab_cplx))
+```
+
+(ref:ceof-damip-cap) Same as Figure \@ref(fig:long-series) but for each DAMIP experiment and the historical experiment in black.
+
+```{r ceofs_standard}
+
+regression <- ceofs_standard %>% 
+  dt_pivot_longer(cols = c(Real, Imaginario), 
+                  names_to = "part", values_to = "hgt") %>% 
+  .[time >= trend_base] %>% 
+  .[, .(hgt = mean(hgt)), by = .(time, cEOF, part, experiment)] %>% 
+  .[, FitLm(hgt, time/10), by= .(cEOF, part, experiment)] %>% 
+  rm_intercept() %>% 
+  .[, term := NULL] %>% 
+  data.table::setnames("part", "term") %>% 
+  .[hgt_regression_mmm, on = .(cEOF, term, experiment)] %>% 
+  .[, hgt := hgt*estimate, by = .(lon, lat, plev, cEOF, term, experiment)] %>% 
+  .[, estimate := NULL] %>% 
+  dt_pivot_wider(names_from = term, values_from = hgt) %>% 
+  .[, Total := Real + Imaginario] %>% 
+  # .[]
+  dt_pivot_longer(cols = Imaginario:Total, names_to = "term", values_to = "hgt")
+
+plot_regresion_time <- function(data) {
+  data %>% 
+    .[, term := factor(term,
+                       levels = c("Real", "Imaginario", "Total"), 
+                       ordered = TRUE)] %>%
+    # .[, dif := dif/sd(dif), by = .(term, experiment)] %>% 
+    periodic(lon = c(0, 360)) %>%
+    ggplot(aes(lon, lat)) +
+    geom_contour_fill(aes(z = hgt, fill = after_stat(level)),
+                      breaks = AnchorBreaks(exclude = 0)) +
+    geom_contour_tanaka(aes(z = hgt),
+                        breaks = AnchorBreaks(exclude = 0)) +
+    scale_linetype(guide = "none") +
+    scale_fill_divergent_discretised(name = "Tendencia concordante con cEOF1",,
+                                     labels = label_one_less,
+                                     guide = guide_colorsteps_bottom(width = 15,
+                                                                     show.limits = FALSE,
+                                                                     ticks = TRUE,
+                                                                     order = 1)) +
+    geom_qmap(crop = c(ymax = -20)) +
+    scale_x_longitude() +
+    scale_y_latitude(limits = c(-90, NA)) +
+    coord_polar2() +
+    facet_grid(experiment ~ term,
+               labeller = labeller(term = c(lab_cplx, Total = "Total"))) +
+    tag_facets(tag = "rc")
+  
+}
+```
+
+```{r mapa-trend, fig.width=6, fig.height=6.3, fig.ncol = 1}
+#| fig.subcap = c("Para 50 hPa.", "Para 200 hPa.")
+datos <- regression %>% 
+  .[!(experiment %in% c("hist-nat", "hist-aer"))] %>%
+  .[cEOF == "cEOF1"] %>% 
+  .[, experiment := factor(experiment, 
+                           levels = experiments)] 
+
+datos %>% 
+  .[plev == 5000] %>% 
+  plot_regresion_time()
+
+# datos %>% 
+#   .[plev == 20000] %>% 
+#   plot_regresion_time()
+```
+
+(ref:mapa-trend-cap) Geopotential height trends (m per decade) at 50 hPa concordant with the trend of the 0º and 90º phase of cEOF1 and their sum.
+
+The 90° phase of cEOF1, shows a positive trend in hist-aer and negative in hist-GHG and, also negative but weaker, in hist-stratO3.
+Decreasing stratospheric ozone and increasing GHG concentrations contribute to the negative trend.
+Both effects tend to reduce the geopotential height by 50 hPa over East Antarctica (Fig. \@ref(fig:map-trend) column 2).
+This combined effect of both forcings has already been identified by previous work as the one that mostly explains the intensification and poleward progression of the westerly winds [@ipcc6ch3].
+
+For the 0° phase of cEOF1, neither hist-nat nor hist-aer show significant trends, suggesting that the observed trend is not due to variability or anthropogenic aerosol forcing.
+On the other hand, hist-stratO3 shows a much larger trend than observed and hist-GHG shows a negative trend of similar magnitude to hist-stratO3.
+This suggests that stratospheric ozone and greenhouse gases have opposite effects on this phase of cEOF1.
+
+The effect of the 0° phase trend of cEOF1 in the hist-GHG experiment on the 50 hPa geopotential height is a slight negative anomaly over the Ross Sea (Fig. \@ref(fig:map-trend) b.1).
+This pattern would indicate an increasing jet to the south of New Zealand.
+This effect is opposite to the effect in the hist-stratO3 experiment.
+
+(ref:suma-cap) Multimodel mean of the standardized time series of the 0° and 90° phases of cEOF1 for the historical experiment (blue) and for the sum of the hist-GHG, hist-stratO3 and hist-aer experiments, i.e. those considering anthropogenic changes (red). The thick lines indicate a smoothing used for local regression.
+
+```{r suma, fig.width=6, fig.height=3}
+ceof_largo_p %>%
+  
+  sep_ReIm() %>%
+  # .[experiment == "historical"] %>%
+  .[, hgt := Anomaly(hgt, time <= 1900), by = .(model, experiment, part, ensemble, cEOF)] %>%
+  .[, hgt := hgt/sd(hgt[time <= 1900]), by = .(model, experiment, part, ensemble, cEOF)] %>%
+  .[, .(hgt = mean(hgt)), by = .(model, experiment, time, part, cEOF)] %>%
+  .[, .(hgt = mean(hgt)), by = .(experiment, time, part, cEOF)] %>%
+  .[, .(historical = hgt[experiment == "historical"],
+        # suma_forzantes = sum(hgt[experiment != "historical"]),
+        antropogénicos = sum(hgt[!(experiment %in% c("historical", "hist-nat"))])),
+    by = .(time, part, cEOF)] %>%
+  .[cEOF == "cEOF1"] %>% 
+  dt_pivot_longer(cols = historical:antropogénicos) %>%
+  ggplot(aes(time, value)) +
+  geom_line(aes(color = name), alpha = 0.4) +
+  geom_smooth(aes(color = name)) +
+  scale_color_brewer(name = "Forzantes", palette = "Set1") +
+  scale_y_continuous(name = NULL) +
+  scale_x_continuous(name = NULL) +
+  facet_grid(cEOF ~ part, labeller = labeller(part = lab_cplx))
+```
+
+As a first approximation to the combined effect of all these forcings, Figure \@ref(fig:sum) shows the multi-model mean of the historical run together with the sum of the multi-model means of the hist-GHG, hist-stratO3 and hist-aer runs.
+Both series show a virtually identical long-term trend, suggesting that the effect of forcing is approximately linear.
 
 Calcular las tendencias y su incertidumbre bien, con un modelo mixto.
 
 ## Conclusions
+
+The CMIP6 models manage to characterize the spatial structure of the cEOFs satisfactorily, with good correlation between spatial patterns, particularly for the multi-model mean.
+The ability of the models to capture their second-order features, such as the relationship with ENSO and SAM is not as good or homogeneous among models.
+Only a few models, such as MIROC6 and CESM2 manage to capture with all their features the influence of ENSO on the cEOF2 phase and the relationship of most models with the SAM is lower than observed.
+
+The slightly positive trend of the 0° phase of cEOF1 is captured by the multi-model mean and analysis of the DAMIP runs indicate that it is mainly associated by stratospheric ozone forcing partially offset by greenhouse gas forcing.
+The CMIP6 models also show a significant negative trend in the 90° phase of cEOF1 not present in the observations that associate it with greenhouse gas forcing primarily and to a lesser extent with ozone forcing and offset by aerosol forcing.
