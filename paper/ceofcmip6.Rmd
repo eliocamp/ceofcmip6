@@ -104,7 +104,7 @@ knitr::opts_chunk$set(echo = FALSE,
 
 library(targets)
 library(here)
-source(here("paper/helpers.R"))
+# source(here("paper/helpers.R"))
 tar_source(here("R"))
 tar_config_set(store = here(tar_config_get("store")))
 
@@ -164,6 +164,23 @@ Fuentes de datos.
 
 Describir un poco CMIP6 y DAMIP.
 
+## Complex EOF
+
+The methods used to derive the complex EOF (cEOF) modes analysed in this work are described fully in @campitelli2023.
+We provide a brief description here.
+
+cEOFs are an extension of regular EOF that can represent phase-varying waves [@horel1984].
+Each cEOF is a set of complex-valued spatial patterns and time series.
+The real and imaginary components of the complex spatial pattern can be thought of as representing two spatial patterns that are shifted by 1/4 wavelength by construction.
+In this paper we use the term 0º cEOF and 90º cEOF to refer to each part of the whole cEOF.
+
+We compute the first leading cEOFs of geopotential height zonal anomalies south of 20ºS at 50 and at 200 hPa.
+cEOFs are defined up to a rotation in the complex plane analogously to how EOFs are defined up to a change in sign.
+We chose the phase of cEOF1 so that the time series corresponding to the 0º cEOF1 has the maximum correlation with the zonal wave 1 of TCO between ``` r``knitr::combine_words(LatLabel(o3wave_lats)) ```.
+Similarly, we chose the phase of cEOF2 so that the coefficient of determination between the ONI and the 0º cEOF2 is minimised, which also nearly maximises the correlation with the 90º cEOF2.
+
+## Models
+
 ```{r references}
 sims <- tar_read(sims) %>% 
   .[, .(model = source_id,
@@ -198,30 +215,33 @@ ceofs %>%
                format = "markdown", format.args = list(zero.print = "-"))
 ```
 
-The models and number of members per experiment used in this study are listed in Table \@ref(tab:mdoelos).
-We used all available CMIP6 models with 5 or more members in the "historical" experiment and all available DAMIP models in the experiments containing only the effect of greenhouse gases ("hist-GHG"), natural variability nic forcings ("hist-nat"), anthropogenic aerosol forcings ("hist-aer") or only the effect of stratospheric ozone ("hist-stratO3") were used.
+The models and the number of members per experiment used in this study are listed in Table \@ref(tab:mdoelos).
+We used all available CMIP6 models with 5 or more members in the historical experiment and all available DAMIP models in the hist-GHG, hist-nat, hist-aer and hist-stratO3 experiments.
 
-The historical experiment includes all known external forcings and is designed to evaluate the ability of the models to correctly simulate present climate and observed climate change.
-In contrast, the rest of the experiments considered leave a certain forcing variable while fixing the remaining forcings.
-The hist-nat experiments are similar but only include solar and volcanic forcing, representing the climate response in the absence of anthropogenic forcing.
+The historical experiment includes all known external forcings and is designed to evaluate the ability of the models to correctly simulate the present climate and the observed climate change.
+In contrast, the rest of the experiments include only a particular forcing while the others remain constant.
 The hist-GHG experiments are forced with well-mixed greenhouse gases only, leaving other changes in atmospheric chemistry such as ozone concentration fixed.
-The hist-aer simulations include only the forcing of changes in anthropogenic aerosol concentrations.
-On the other hand, hist-stratO3 simulations include only the forcing of stratospheric ozone variation, leaving all other atmospheric chemistry and tropospheric ozone concentrations constant.
+The hist-aer experiments include only the forcing of changes in anthropogenic aerosol concentrations.
+The hist-stratO3 experiments include only the forcing of stratospheric ozone variability, leaving all other atmospheric chemistry and tropospheric ozone concentrations constant.
+The hist-nat experiments only include solar and volcanic forcing, representing the climate response in the absence of anthropogenic forcing.
 
 To calculate the cEOFs of a given model and experiment and evaluate its performance, all its members were concatenated into a single data set resulting in a single set of cEOFs.
-That is, this method considers $k$ simulations of $n$ years as a single simulation of $k\times n$ years.
+That is, this method considers $k$ members of $n$ years as a single simulation of $k\times n$ years.
 Then, the cEOFs were calculated following the methodology of Section \@ref(ceof-method).
-Then for each model and experiment a single (complex) spatial pattern per cEOF but in addition a (complex) time series per member was obtained.
+For each model and experiment, each cEOF is comprised of a single (complex) spatial pattern per cEOF but multiple (complex) time series; one per member.
 
-To make it comparable to ERA5, cEOFs were computed for the modern period, between 1979 and 2014 (the latest year available for all members).
+To make it comparable with ERA5, cEOFs were computed for the modern period, between 1979 and 2014 (the latest year available for all members).
 
-As explained above, cEOFs are not unequivocally defined as they accept any rotation in the complex plane analogously to how EOFs accept sign changes.
-The cEOFs computed in ERA5 were rotated to maximize the correlation with either stratospheric ozone or ENSO as described in Section \@ref(ceof-method).
-For the CMIP models, the cEOFs were rotated to maximize the spatial correlation of the patterns with the corresponding ERA5 cEOF. This looks for the pattern location to be similar to the observed one.
+The SAM and its Symmetric and Asymmetric components were computed following @campitelli2023.
+In brief, at each level, we computed the SAM as the leading EOF of monthly geopotential height anomalies south of 20ºS.
+We then compute the zonal mean and zonal anomalies of the spatial pattern, and project monthly geopotential height anomalies onto those patterns to define the indices for the SAM, the S-SAM and the A-SAM.
+These are then normalised by the standard deviation of the SAM index.
 
 Describir los cEOF brevemente.
 
 Describir A-SAM brevemente
+
+Multi model averages of computed quantities are computed by inverse weighting models by their number of members so that a single model with many many members don't dominate the average [@ipcc].
 
 # Results and discussion {#restuls}
 
@@ -275,15 +295,14 @@ cors <- ceofs %>%
   .[, label := paste0(model, "\n(", scales::number(correlation^2, 0.01), ")")]
 ```
 
-Prior to other analyses, it was decided to evaluate the ability of the models to capture the properties of the observed cEOFs.
-For this, historical experiments were considered.
+Prior to other analyses, we evaluate the ability of the models to capture the basic properties of the observed cEOFs using the historical experiments.
 
-Figure \@ref(fig:compare-r2) shows the $r^2$ of the spatial patterns of each model for the two cEOFs.
-In general these values range between `r combine_words(scales::percent(range(cors[experiment == "historical"]$r2)))`.
+Figure \@ref(fig:compare-r2) shows the $r^2$ between the spatial patterns of each model with ERA5 for the two leading cEOFs.
+These values range between `r combine_words(scales::percent(range(cors[experiment == "historical"]$r2)))`.
 In all cases, the correlation between simulated and observed cEOF1 is higher than that obtained for cEOF2.
-Although models with lower correlation with the observed modes can be identified, such as `r cors[experiment == "historical"][, model := reorder(model, r2, fun = mean)][, levels(model)[1:2]] %>% combine_words()`, even these are associated with values greater than 50%.
+Although models with lower correlation with the observed modes can be identified, such as `r cors[experiment == "historical"][, model := reorder(model, r2, fun = mean)][, levels(model)[1:2]] %>% combine_words()`, even these are associated with $r^2$ values greater than 50%.
 
-(ref:compare-r2-cap) Coefficient of determination ($r^2$) of the spatial patterns of each model with ERA5 for cEOF1 (red) and cEOF2 (blue).
+(ref:compare-r2-cap) Coefficient of determination ($r^2$) between the spatial patterns of each model and ERA5 for cEOF1 (red) and cEOF2 (blue).
 
 ```{r compare-r2, fig.width=5, fig.height=6}
 cors %>% 
@@ -298,17 +317,9 @@ cors %>%
   scale_y_discrete(NULL)
 ```
 
-To better understand the spatial patterns represented by each of the models, Figs.
-\@ref(fig:all-ceof1) and \@ref(fig:all-ceof2) show the 0° phase of cEOF1 and cEOF2, respectively, with the models ordered according to the $r^2$ of the respective cEOF and those represented by ERA5.
-For cEOF1 (Fig. \@ref(fig:all-ceof1)) all models except FGOALS-g3 (panel t) correctly capture the observed wave 1 pattern.
-The differences with ERA5 are visually minimal, as expected from the high spatial correlation of these patterns.
-For cEOF2 (Fig. \@ref(fig:all-ceof2)), all models capture the wave 3 pattern located in the Pacific-Atlantic sector.
-In particular, the positive center south of South America and the negative centers to the sides of it coincide in all models with the centers of ERA5.
-The main feature of the models with low correlation is the lower intensity and poor localization of the maximum located south of New Zealand.
-
-The multi-model mean pattern of the phase of each cEOF at each level, calculated by averaging the spatial pattern corresponding to each of the models is shown in Figure \@ref(fig:mmm), along with the $r^2$ of these patterns with respect to those observed.
+The multi-model mean pattern of each cEOF at each level, calculated by averaging the spatial pattern corresponding to each of the models is shown in Figure \@ref(fig:mmm), along with the $r^2$ between these patterns and the respective ERA5 pattern.
 The patterns are extremely similar to those observed in ERA5 and have $r^2$ of 94% and 89% for cEOF1 and cEOF2 respectively.
-The multi-model average is more similar to the observed patterns than any individual model, indicating that the deficiencies of each model are compensated for by averaging.
+The multi-model average is more similar to the observed patterns than any individual model, indicating that the deficiencies of each model are compensated by averaging.
 
 ```{r interpolated}
 base <- ceofs[model == "ERA5"]$eof[[1]]$right %>% 
@@ -370,19 +381,21 @@ interpolated %>%
                                           part = lab_cplx)) 
 ```
 
-(ref:mmm-cap) Multimodel mean (shaded, positive values in red, negative in blue) of the spatial fields of each cEOF, phase and level. Contours mark ERA5 patterns (positive values in filled lines, negative values in dashed line). The $r^2$ between ERA5 and the multimodel mean is in parentheses. Arbitrary units.
+(ref:mmm-cap) Multimodel mean (shaded, positive values in red, negative in blue) of the spatial fields of each cEOF, phase and level. The corresponding ERA5 patterns are shown as contours (positive values in filled lines, negative values in dashed line). The $r^2$ between the multimodel mean and ERA5 is in parentheses. Arbitrary units.
 
-The CMIP6 models then successfully capture the spatial patterns of the cEOFs in both the multi-model mean and the individual models.
-Next is to explore whether the models succeed in capturing second-order features, such as their variability and relationship to other parts of the climate system.
+The CMIP6 models successfully capture the spatial patterns of the cEOFs in both the multi-model mean and the individual models.
+Next is to explore whether the models succeed in capturing second-order features, such as their variability and relationship to other parts of the climate system [@campitelli2022, @campitelli2023].
 
 ## Tropical variability
 
-As shown in Section \@ref(sources-ceof), cEOF2 is strongly related to tropical variability.
-A first approach to explore this relationship in the CMIP6 models was to calculate the correlation between cEOF2 and ONI for each model (Figure \@ref(fig:cor-enso-plot)).
-It was found that almost all models have a high correlation between ONI and the 90° phase of cEOF2 and almost no correlation between ONI and the 0° phase of cEOF2, which is consistent with observations.
-However, there is great variability in the ability of models to capture this relationship.
-Some, such as MIROC6 and CESM2 have a correlation close to that observed, but in most it is much lower.
-IPSL-CM6A-LR and INM-CM5-0 show virtually no relationship between cEOF2 and ONI.
+@campitelli2023 showed that cEOF2 is strongly related to tropical variability.
+In particular its 90º phase is positively correlated with ENSO.
+This relationship comes not because a strong ENSO is associated with a strong cEOF2 amplitude, but because strong ENSO anomalies bias the phase of the cEOF2 to be in in either its 90º or -90º phase for positive and negative ENSO anomalies respectively.
+
+Figure \@ref(fig:cor-enso-plot) shows the correlation between cEOF2 and ONI for each model.
+Almost all models have a high correlation between ONI and the 90° cEOF2 and almost no correlation between ONI and the 0° cEOF2, which is consistent with observations.
+However, even in the models with the most correlation, such as MIROC6 and CESM2, this relationship is not as strong as the one in ERA5.
+Models also vary greatly in their ability to capture this relationship, with IPSL-CM6A-LR and INM-CM5-0 showing virtually no relationship between cEOF2 and ONI.
 
 ```{r enso_cmip}
 tar_load(enso_cmip)
@@ -418,7 +431,7 @@ labs_cor_enso <- cors_enso %>%
   .[, setNames(label, model)]
 ```
 
-(ref:cor-enso-plot-cap) Coefficient of determination ($r^2$) between the ONI index and the 0° (blue) and 90° (red) phases of cEOF2 for each CMIP6 model and for ERA5.
+(ref:cor-enso-plot-cap) Coefficient of determination ($r^2$) between the ONI index and the 0° cEOF (blue) and 90° cEOF (red) for each CMIP6 model and for ERA5.
 
 ```{r cor-enso-plot, fig.width=4, fig.height=6}
 cors_enso_all %>% 
@@ -465,11 +478,9 @@ ceofs[, eof[[1]]$left, by = .(model, experiment)] %>%
 
 (ref:arg-enso-density-cap) Kernel density estimate of the cEOF2 phase for springs with ONI less than -0.5 (green), between -0.5 and 0.5 (orange), and greater than 0.5 (blue) for the CMIP6 models in the 1979-2014 period and for ERA5 in the `r period`.
 
-The relationship between cEOF2 and ENSO is explained by a phase preference when the tropical forcing is active.
-To evaluate this in CMIP6 models, Figure \@ref(fig:enso-phase-cmip) shows the relationship between ENSO and cEOF2 phase for CMIP6 models and Figure \@ref(fig:arg-enso-density) the distribution of cEOF2 phases for springs with ONI less than -0.5, greater than 0.5 and intermediate values.
-Models with a high correlation between cEOF2 and ENSO show a strong sinusoidal relationship, while in models with low correlation the relationship is flatter.
-The phase distributions according to ONI index categories (Fig. \@ref(fig:arg-enso-density)) are well separated in observations and in models with high correlation between cEOF2 and ONI.
-In these models (e.g. MIROC6, CESM2), when ENSO is active (defined as ONI \> 0.5 or ONI \< -0.5), the phase of cEOF2 is concentrated near \$\pm\$0.5° (depending on the sign of ONI) whereas when ENSO is not as active (defined as ONI between -0.5 and 0.5), the phase distribution is more uniform.
+To evaluate how the cEOF phase depends on ENSO anomalies in CMIP6 models, Figure \@ref(fig:arg-enso-density) shows the distribution of cEOF2 phases for springs with ONI less than -0.5, greater than 0.5 and intermediate values.
+The phase distribution is well-separated by the ONI index categories in ERA5 (panel a) and in models with high correlation between 90º cEOF2 and ONI.
+In these models (e.g. MIROC6, CESM2), when ENSO is active (defined as $|\mathrm{ONI}| > 0.5$ ), cEOF2 phase is concentrated near $\pm$ 0.5° (depending on the sign of ONI) whereas when ENSO is not as active ($|\mathrm{ONI}| < 0.5$), the phase distribution is more uniform.
 In models with low correlation between cEOF2 and ONI (e.g., IPSL-CM6A-LR, INM-CM5-0) the phase distribution is uniform regardless of ENSO activity.
 
 ```{r fft}
@@ -504,6 +515,7 @@ enso_gdata <- enso_fft %>%
 
 fft %>% 
   .[cEOF == "cEOF2"] %>% 
+  .[part == "Imaginario"] |> 
   .[experiment %in% c("historical", "reanalysis")] %>% 
   # .[, .(spec = mean(spec)), by = .(freq, part, model, cEOF)] %>% 
   .[cors_enso, on = .NATURAL] %>% 
@@ -530,19 +542,20 @@ fft %>%
   rect
 ```
 
-(ref:fft-ceof2-cap) Fourier spectra in each model for the 90° phase of cEOF2 (orange), for the 0° phase of cEOF2 (violet) and for ONI (black). Dark line is the average spectrum of all members, shown in translucent lines. The ONI spectrum is the average spectrum of all members of each model. Panels are ordered from largest to smallest according to the $r^2$ between the 90° phase of cEOF2 and ONI, which is shown in parentheses in the title of each panel.
+(ref:fft-ceof2-cap) Fourier spectra in each model for the 90° phase of cEOF2 (orange) and for ONI (black). Dark line is the average spectrum of all members, shown in translucent lines. The ONI spectrum is the average spectrum of all members of each model. Panels are ordered from largest to smallest according to the $r^2$ between the 90° phase of cEOF2 and ONI, which is shown in parentheses in the title of each panel.
 
-The relationship between cEOF2 and ENSO is also evident in the similarity of the periodogram of the series.
-Figure \@ref(fig:fft-ceof2) shows the periodogram for cEOF2 with one line per limb and a thick line marking the average periodogram, as well as the average ONI periodogram of each model.
-Most models have an ONI periodicity of 3 years similar to that observed in ERA5, although the intensity and maximum period vary significantly.
+The relationship between the 90º cEOF2 and ENSO is also evident in the the periodogram of both time series.
+Figure \@ref(fig:fft-ceof2) shows the periodogram of the 90º cEOF2 with one line per member and a thick line showing the average periodogram, as well as the average ONI periodogram of each model.
+Most models have an ONI periodicity of around 3 years similar to that observed in ERA5, although the intensity and maximum period vary significantly.
 
-All of the models that have a clear periodicity at \~3 yr in the 90° phase of cEOF2 also have a very clear ENSO periodicity and also tend to have a correlation between the 90° phase of cEOF2 and ENSO higher.
-On the other hand, none of the models with very low correlation with ENSO but clear ENSO periodicity have clear periodicity in cEOF2.
-
+All models with a clear \~3 year periodicity in the 90º cEOF2 also have a clear ENSO periodicity in the same time scale and tend to have a higher correlation between the 90° cEOF2 and ENSO.
+None of the models with very low correlation have a clear 90º cEOF2 periodicity even if they have a clear ENSO periodicity signal (e.g. MIROC-ES2L, panel ???).
 However, there are models with clear ENSO periodicity and relatively high correlation that do not have clear cEOF2 periodicity.
-MRI-ENSM2-0, UKESM1-0-LL, MPI-ESM1-2-LR are some examples.
+MRI-ENSM2-0 (panel ???), UKESM1-0-LL (panel ???), MPI-ESM1-2-LR (panel ???) are some examples.
 
-These observations suggest that ENSO is the source of cEOF2 periodicity in CMIP6 models but that their ability to represent observed periodicity depends not only on ENSO periodicity and the degree of correlation between the indices.
+--- DONE
+
+These observations suggest that ENSO is the source of cEOF2 periodicity in CMIP6 models but that their ability to represent observed periodicity depends on more factors than just the degree of correlation between the indices.
 
 (ref:sst-mmm-cap) Multi-model mean of SST regression with the 0° and 90° phases of each cEOF (K). The shaded area shows the areas where more than half of the models have p-values less than 0.01. The black contours show the SST regression observed in ERA5.
 
