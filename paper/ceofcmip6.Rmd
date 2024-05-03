@@ -553,8 +553,6 @@ None of the models with very low correlation have a clear 90º cEOF2 periodicity
 However, there are models with clear ENSO periodicity and relatively high correlation that do not have clear cEOF2 periodicity.
 MRI-ENSM2-0 (panel ???), UKESM1-0-LL (panel ???), MPI-ESM1-2-LR (panel ???) are some examples.
 
---- DONE
-
 These observations suggest that ENSO is the source of cEOF2 periodicity in CMIP6 models but that their ability to represent observed periodicity depends on more factors than just the degree of correlation between the indices.
 
 (ref:sst-mmm-cap) Multi-model mean of SST regression with the 0° and 90° phases of each cEOF (K). The shaded area shows the areas where more than half of the models have p-values less than 0.01. The black contours show the SST regression observed in ERA5.
@@ -591,55 +589,17 @@ sst_regr_cmip6 %>%
   facet_grid(cEOF ~ term, labeller = labeller(term = lab_cplx)) 
 ```
 
-To study this relationship in more detail, the relationship between cEOFs and SST anomalies was evaluated.
-Figure \@ref(fig:sst-mmm) shows the multi-model mean of the regression between SST and the two phases of each cEOF, marking the areas where more than half of the models have p-values less than 0.01.
-The CMIP6 models reproduce the regression patterns of the 90° phase of cEOF2 relatively well.
+To study the spatial stsructure of the SST anomalies associated with the cEOFs, Figure \@ref(fig:sst-mmm) shows the multi-model mean of the regression between SST and the two phases of each cEOF and the same regression for ERA5.
+CMIP6 models reproduce the regression patterns of the 90° phase of cEOF2 relatively well.
 Excess signal is observed in the equatorial Pacific in the 0° phase of cEOF2 which is likely due to these modes not being aligned to minimize this relationship.
 On the other hand, the signal associated with the 90º phase of cEOF1 does show excessively high values not observed in ERA5.
-
-(ref:cor-sst-regr-cap) Coefficient of determination ($r^2$) between the regression patterns of the 0° (purple) and 90° (orange) phases of each cEOF and SST each model and the respective regression pattern of ERA5.
-
-```{r cor-sst-regr, fig.width=6, fig.height=4}
-sst_cors <- sst_regression %>% 
-  .[, Interpolate(estimate ~ lon + lat,
-                  x.out = unique(sst_regression_ERA5$lon),
-                  y.out = unique(sst_regression_ERA5$lat)),
-    by = .(model, experiment, term, cEOF)] %>%
-  na.omit() %>% 
-  .[sst_regression_ERA5, on = .NATURAL] %>% 
-  .[, correlate(estimate, era5), by = .(model, experiment, term, cEOF)] %>% 
-  .[, r2 := estimate^2]
-
-sst_cors %>% 
-  .[, r2_ceof2 := r2[cEOF == "cEOF2" & term == "Imaginario"],
-    by = .(model, experiment)] %>% 
-  .[, model := reorder(model, r2_ceof2, fun = mean)] %>% 
-  {
-    models_sst_cor <<- levels(.$model)
-    .
-  } %>% 
-  
-  .[, picos := model %in% con_picos$model & cEOF == "cEOF2" & term == "Imaginario"] %>% 
-  ggplot(aes(r2, model)) +
-  # geom_col(aes(x = 1 , 
-  #               y = ifelse(picos, model, NA)), alpha = 0.2, fill = "gray50") +
-  geom_col(aes(fill = term), 
-           position = position_dodge2(reverse = TRUE, padding = 0)) +
-  scale_fill_fase() +
-  scale_x_continuous(r2, limits = c(0, 1), labels = scales::percent_format()) +
-  scale_y_discrete(NULL) +
-  facet_wrap(~cEOF)
-
-```
-
-To have a global and quantitative view of this comparison, Figure \@ref(fig:cor-sst-regr) shows the $r^2$ between the SST regressions associated with the 90° phase of cEOF2 for each model and the corresponding regression for ERA5.
-For most models the pattern is similar to that observed, except for INM-CM5-0.
-The regressions associated with the 0º phase of cEOF2, on the other hand, have low similarity to that observed in almost all models.
-Possibly this is due to the excess signal present in the ENSO region.
+It is not clear what might be producing this signal.
 
 Explorar DAMIP. Con suerte no da particularmente distinto y no se muestra.
 
 ## Relationship with SAM
+
+Another significant finding in @campitell
 
 Section \@ref(sam-ceof) showed that there was a significant relationship between the different phases of the cEOFs and the different components of the SAM.
 Figure \@ref(fig:cor-sam-cmip6) shows the $r^2$ between the SAM components and the phases of the cEOFs for the CMIP6 models.
@@ -895,6 +855,10 @@ hgt_regression_mmm %>%
 
 (ref:regresion-hgt-damip-cap) Regression of geopotential height anomalies (m) with the 0° (column 1) and 90° (column 2) phase of cEOF1 at 50 hPa for the `r trend_base`--2014 period for the CMIP6 and DAMIP experiments.
 
+No sé si esto va.
+Hace mucha referencia a la regresión que está en el paper anterior.
+Hay que mostrar esa regresión o cambiar esto.
+
 The spatial patterns of both cEOFs are very similar in all experiments and comparable to that observed in Figure \@ref(fig:mmm) (not shown).
 The regression with geopotential height, on the other hand, has differences in the case of cEOF1.
 These regressions are shown in Figure \@ref(fig:regression-hgt-damip) for the 50 hPa level.
@@ -903,7 +867,7 @@ This is the opposite of what was observed in ERA5, where the 0° phase was the o
 This is also the case for the hist-stratO3 experiment, although a wave 1 rather than a monopole is observed in phase 90 (Fig \@ref(fig:regression-hgt-damip), row c).
 On the other hand, the regressions for the hist-aer experiment (Fig. \ref(fig:regression-hgt-damip) row e) are more similar to those observed, as well as those for the hist-GHG experiment (Fig. \ref(fig:regression-hgt-damip) row b) and to a lesser extent for the hist-nat experiment (Fig. \ref(fig:regression-hgt-damip), row d).
 
-```{r series-largas, fig.width=6, fig.height=4}
+```{r extended-series, fig.width=6, fig.height=4}
 ceof_largo_p %>% 
   sep_ReIm() %>% 
   .[experiment == "historical"] %>% 
@@ -921,11 +885,11 @@ ceof_largo_p %>%
   facet_grid(cEOF ~ part, labeller = labeller(part = lab_cplx))
 ```
 
-(ref:series-largas-cap) Time series of standardized anomalies of the cEOFs computed using the period 1850 - 2014 averaged for each model (translucent lines) and their multi-model mean (dark line). Anomalies are computed with respect to the mean between 1850 and 1900. Translucent lines show the series for each model.
+(ref:extended-series-cap) Time series cEOF standardized anomalies using the period 1900--2014 as reference. Translucent lines show each model average and the dark line shows the multimodel mean.
 
 Figure \@ref(fig:extended-series) shows the time series over the entire period.
-The 0° phase of cEOF1 has a small positive trend starting around `r trend_base`, consistent with the trend observed in ERA5 (Fig. \@ref(fig:extended-series)).
-However, the 90° phase of cEOF1 has a much larger negative trend, which is not present in ERA5.
+The 0° cEOF1 has a small positive trend starting around `r trend_base`, consistent with the trend observed in ERA5 @campitelli2021.
+However, the 90° cEOF1 has a much larger negative trend, which is not present in ERA5.
 
 ```{r trends}
 trends <- ceof_largo_p %>% 
@@ -981,20 +945,20 @@ plot_trend <- function(data) {
 ```{r trends-ceof1,fig.width=6, fig.height=6}
 trends %>% 
   .[cEOF == "cEOF1"] %>% 
-  plot_trend()  
+  plot_trend()
 ```
 
-(ref:trends-ceof1-cap) Linear trends of each phase of cEOF1 from `r trend_base`. Each point represents a member, where members with significant trends (p-value \< 0.01) are marked with a cross. The dashed vertical line represents the average trend of all models.
+(ref:trends-ceof1-cap) Linear trends of each phase of the cEOF1 from `r trend_base` to 2014. Each point represents a member, where members with significant trends (p-value \< 0.01) are marked with a cross. The dashed vertical line represents the average trend of all models.
 
-The trends of each phase of cEOF1 for each model from `r trend_base` are shown in Figure \@ref(fig:trends-ceof1) along with the average trend of all models.
-The average trend for the 0° phase is positive but very small.
-In addition, the models are not consistent in their trends and only a few models have a positive average trend.
+The trends of each cEOF1 phase for each model from `r trend_base` to 2014 are shown in Figure \@ref(fig:trends-ceof1) along with the average trend of all models.
+The average trend for the 0° cOEF1 is positive but very small.
+In addition, model members are not consistent in their trends and only a few models have a positive average trend.
 On the other hand, the trends of the 90º phase are more consistent.
 
-These trends are incompatible with the observed cEOF1 variability, which has a positive trend in its 0º phase and no trend in its 90º phase.
-It is possible that the models have some fundamental problem in capturing long-term variability in this way, either because of flaws in the internal dynamics or because of some problem with the forcing involved.
+These trends are incompatible with the observed cEOF1 variability, which has slight positive trend in its 0º phase and no trend in its 90º phase [@campitelli2023].
+It is possible that the models have some fundamental problem in capturing long-term variability, either because of flaws in the internal dynamics or due to a problem with the relevant forcings.
 
-It is also possible that the observed trend is due to low-frequency internal variability.
+It is also possible that the trend in ERA5 is due to low-frequency internal variability.
 In this case, the models would not be expected to correctly capture the phase of this variability, so it would not be observable in either the multi-model mean or the individual member trends particularly in the `r trend_base`--2014 period.
 ERA5 can be considered as a particular realization of the climate ensemble and it is possible that the particular trend observed is not necessarily representative of the external forcing.
 
@@ -1099,26 +1063,25 @@ datos %>%
 #   plot_regresion_time()
 ```
 
-(ref:mapa-trend-cap) Geopotential height trends (m per decade) at 50 hPa concordant with the trend of the 0º and 90º phase of cEOF1 and their sum.
+(ref:mapa-trend-cap) Geopotential height trends (m per decade) at 50 hPa concordant with the trend of the 0° and 90° cEOF1 and their sum.
 
-The 90° phase of cEOF1, shows a positive trend in hist-aer and negative in hist-GHG and, also negative but weaker, in hist-stratO3.
+The 90° cEOF1, shows a positive trend in hist-aer and negative trend in hist-GHG and, also negative but weaker, in hist-stratO3.
 Decreasing stratospheric ozone and increasing GHG concentrations contribute to the negative trend.
-Both effects tend to reduce the geopotential height by 50 hPa over East Antarctica (Fig. \@ref(fig:map-trend) column 2).
+Both effects tend to reduce the geopotential height at 50 hPa over East Antarctica (Fig. \@ref(fig:map-trend) column 2).
 This combined effect of both forcings has already been identified by previous work as the one that mostly explains the intensification and poleward progression of the westerly winds [@ipcc6ch3].
 
-For the 0° phase of cEOF1, neither hist-nat nor hist-aer show significant trends, suggesting that the observed trend is not due to variability or anthropogenic aerosol forcing.
+In the case of the 0° cEOF1, neither hist-nat nor hist-aer show significant trends, suggesting that the observed trend is not due to variability or anthropogenic aerosol forcing.
 On the other hand, hist-stratO3 shows a much larger trend than observed and hist-GHG shows a negative trend of similar magnitude to hist-stratO3.
 This suggests that stratospheric ozone and greenhouse gases have opposite effects on this phase of cEOF1.
 
-The effect of the 0° phase trend of cEOF1 in the hist-GHG experiment on the 50 hPa geopotential height is a slight negative anomaly over the Ross Sea (Fig. \@ref(fig:map-trend) b.1).
-This pattern would indicate an increasing jet to the south of New Zealand.
+The effect of the trend in the 0° cEOF1 in the hist-GHG experiment in the 50 hPa geopotential height is a slight negative anomaly over the Ross Sea (Fig. \@ref(fig:map-trend) b.1).
+This pattern would indicate a stronger jet to the south of New Zealand.
 This effect is opposite to the effect in the hist-stratO3 experiment.
 
 (ref:suma-cap) Multimodel mean of the standardized time series of the 0° and 90° phases of cEOF1 for the historical experiment (blue) and for the sum of the hist-GHG, hist-stratO3 and hist-aer experiments, i.e. those considering anthropogenic changes (red). The thick lines indicate a smoothing used for local regression.
 
-```{r suma, fig.width=6, fig.height=3}
+```{r sum, fig.width=6, fig.height=3}
 ceof_largo_p %>%
-  
   sep_ReIm() %>%
   # .[experiment == "historical"] %>%
   .[, hgt := Anomaly(hgt, time <= 1900), by = .(model, experiment, part, ensemble, cEOF)] %>%
@@ -1140,14 +1103,14 @@ ceof_largo_p %>%
   facet_grid(cEOF ~ part, labeller = labeller(part = lab_cplx))
 ```
 
-As a first approximation to the combined effect of all these forcings, Figure \@ref(fig:sum) shows the multi-model mean of the historical run together with the sum of the multi-model means of the hist-GHG, hist-stratO3 and hist-aer runs.
+As a first approximation to the combined effect of all antropogenic forcings, Figure \@ref(fig:sum) shows the multi-model mean of the historical run together with the sum of the multi-model means of the hist-GHG, hist-stratO3 and hist-aer runs.
 Both series show a virtually identical long-term trend, suggesting that the effect of forcing is approximately linear.
 
 Calcular las tendencias y su incertidumbre bien, con un modelo mixto.
 
 ## Conclusions
 
-The CMIP6 models manage to characterize the spatial structure of the cEOFs satisfactorily, with good correlation between spatial patterns, particularly for the multi-model mean.
+The CMIP6 models manage to characterise the spatial structure of the cEOFs satisfactorily, with good correlation between spatial patterns, particularly for the multi-model mean.
 The ability of the models to capture their second-order features, such as the relationship with ENSO and SAM is not as good or homogeneous among models.
 Only a few models, such as MIROC6 and CESM2 manage to capture with all their features the influence of ENSO on the cEOF2 phase and the relationship of most models with the SAM is lower than observed.
 
