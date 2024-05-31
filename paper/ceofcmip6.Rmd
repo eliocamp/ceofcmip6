@@ -518,7 +518,7 @@ enso_gdata <- enso_fft %>%
 
 fft %>% 
   .[cEOF == "cEOF2"] %>% 
-  .[part == "Imaginario"] |> 
+  .[part == "Imaginario"] %>% 
   .[experiment %in% c("historical", "reanalysis")] %>% 
   # .[, .(spec = mean(spec)), by = .(freq, part, model, cEOF)] %>% 
   .[cors_enso, on = .NATURAL] %>% 
