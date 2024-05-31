@@ -152,6 +152,9 @@ scale_fill_experiments <- function(...) {
                     values = colores)
 }
 
+lab_cplx <- c("Real" = "0º",
+              "Imaginario" = "90º")
+
 ```
 
 # Abstract
@@ -205,7 +208,7 @@ ceofs %>%
   .[, .(miembros = uniqueN(ensemble)), by = .(model, experiment)] %>% 
   tidyr::pivot_wider(names_from = experiment, values_from = miembros, values_fill = 0) %>% 
   as.data.table() %>% 
-  .[sims, on = "model"] %>% 
+  sims[., on = "model"] %>% 
   .[, model := paste(model, ref, sep = "\n")] %>% 
   .[, ref := NULL] %>% 
   .[, .(model, historical, `hist-GHG`, `hist-nat`, `hist-stratO3`, `hist-aer`)] %>% 
@@ -398,7 +401,7 @@ However, even in the models with the most correlation, such as MIROC6 and CESM2,
 Models also vary greatly in their ability to capture this relationship, with IPSL-CM6A-LR and INM-CM5-0 showing virtually no relationship between cEOF2 and ONI.
 
 ```{r enso_cmip}
-tar_load(enso_cmip)
+enso_cmip <- tar_read(enso_cmip)
 
 enso_cmip <- ENSO() %>% 
   fread() %>% 
@@ -560,7 +563,7 @@ These observations suggest that ENSO is the source of cEOF2 periodicity in CMIP6
 (ref:sst-mmm-cap) Multi-model mean of SST regression with the 0° and 90° phases of each cEOF (K). The shaded area shows the areas where more than half of the models have p-values less than 0.01. The black contours show the SST regression observed in ERA5.
 
 ```{r, sst_regr_cmip6}
-tar_load(sst_regr_cmip6)
+sst_regr_cmip6 <- tar_read(sst_regr_cmip6)
 ```
 
 ```{r sst-mmm, fig.width=6, fig.height=3.3}

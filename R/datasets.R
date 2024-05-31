@@ -112,11 +112,6 @@ datasets_list <- function() {
   x
 }
 
-#' @export
-datasets_download <- function(force_download = FALSE, from_source = FALSE) {
-  lapply(datasets_list(), function(x) x(force_download = force_download, from_source = from_source))
-}
-
 
 #' Crea una nueva base de datos
 #'

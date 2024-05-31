@@ -1,0 +1,3 @@
+main:
+  inherits: /home/elio.campitelli/ceofcmip6/_targets
+  store: /home/elio.campitelli/ceofcmip6/_targets
